@@ -27,12 +27,6 @@ with DAG(
     # 1) Placeholder de inicio
     start = EmptyOperator(task_id='start')
 
-    # 2) Obtener datos
-    get_data = PythonOperator(
-        task_id='create_folders',
-        python_callable=get_data
-    )
-
     # 3) Procesar datos
     process_data = PythonOperator(
         task_id='process_data',

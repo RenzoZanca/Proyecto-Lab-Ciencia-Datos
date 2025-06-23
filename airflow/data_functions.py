@@ -26,11 +26,11 @@ import os
 import joblib
 
 # Obtiene los datos de la fuente
-def get_data():
+def get_data(execution_date):
      # nota: cambiar paths en un futuro (probablemente según fecha)
-    transacciones = pd.read_parquet('data/transacciones.parquet')
-    clientes = pd.read_parquet('data/clientes.parquet')
-    productos = pd.read_parquet('data/productos.parquet')
+    transacciones = pd.read_parquet(os.path.join(execution_date, 'data/transacciones.parquet'))
+    clientes = pd.read_parquet(os.path.join(execution_date, 'data/clientes.parquet'))
+    productos = pd.read_parquet(os.path.join(execution_date, 'data/productos.parquet'))
     data = {
         'transacciones': transacciones,
         'clientes': clientes,
@@ -117,8 +117,9 @@ def finalize_dataset(tx):
     return df
 
 # Función principal para procesar los datos
-def process_data():
-    data = get_data()
+def process_data(**kwargs):
+    execution_date = kwargs['ds']
+    data = get_data(execution_date=execution_date)
     clients = process_clients(data['clientes'])
     products = process_products(data['productos'])
     transactions = process_transactions(data['transacciones'])
@@ -128,8 +129,8 @@ def process_data():
     tx = merge_all_data(df_combined, clients, products)
     df_processed = finalize_dataset(tx)
     # guardar el DataFrame procesado como parquet
-    os.makedirs("data_processed", exist_ok=True)
-    df_processed.to_parquet("data_processed/df_processed.parquet", index=False)
+    os.makedirs(os.path.join(execution_date, "data_processed"), exist_ok=True)
+    df_processed.to_parquet(os.path.join(execution_date, "data_processed/df_processed.parquet"), index=False)
 
 # ----------------------------------------------------------------------------
 
@@ -147,8 +148,9 @@ def temporal_undersample(df, ratio=4, time_col='week', label_col='label', random
     return pd.concat(parts).sample(frac=1, random_state=random_state)
 
 # Divide los datos en conjuntos de entrenamiento, validación y prueba
-def holdout():
-    df = pd.read_parquet("data_processed/df_processed.parquet")
+def holdout(**kwargs):
+    execution_date = kwargs['ds']
+    df = pd.read_parquet(os.path.join(execution_date, "data_processed/df_processed.parquet"))
     df_final_ord = df.sort_values("week")
     train_cut = df_final_ord["week"].quantile(0.70)
     val_cut   = df_final_ord["week"].quantile(0.85)
@@ -160,10 +162,10 @@ def holdout():
     train_df = temporal_undersample(train_df, ratio=4)
 
     # guardar los DataFrames de entrenamiento, validación y prueba
-    os.makedirs("data_holdout", exist_ok=True)
-    train_df.to_parquet("data_holdout/train_df.parquet", index=False)
-    val_df.to_parquet("data_holdout/val_df.parquet", index=False)
-    test_df.to_parquet("data_holdout/test_df.parquet", index=False)
+    os.makedirs(os.path.join(execution_date, "data_holdout"), exist_ok=True)
+    train_df.to_parquet(os.path.join(execution_date, "data_holdout/train_df.parquet"), index=False)
+    val_df.to_parquet(os.path.join(execution_date, "data_holdout/val_df.parquet"), index=False)
+    test_df.to_parquet(os.path.join(execution_date, "data_holdout/test_df.parquet"), index=False)
 
 # ----------------------------------------------------------------------------
 
@@ -199,8 +201,9 @@ def extract_date_features(X):
 
 
 # Función principal de ingeniería de características  
-def feature_engineering():
-    transactions = process_transactions(pd.read_parquet("data/transacciones.parquet"))
+def feature_engineering(**kwargs):
+    execution_date = kwargs['ds']
+    transactions = process_transactions(pd.read_parquet(os.path.join(execution_date, "data/transacciones.parquet")))
     client_trans = (
         transactions
             .groupby("customer_id")["purchase_date"]
@@ -310,17 +313,17 @@ def feature_engineering():
     X_test_tr  = features_pipeline.transform(X_test)
 
     # Make directory if it doesn't exist
-    os.makedirs("data_transformed", exist_ok=True)
+    os.makedirs(os.path.join(execution_date, "data_transformed"), exist_ok=True)
 
     # Save as parquet (or use .to_csv("filename.csv") if preferred)
-    X_train_tr.to_parquet("data_transformed/X_train.parquet")
-    y_train.to_frame().to_parquet("data_transformed/y_train.parquet")
+    X_train_tr.to_parquet(os.path.join(execution_date, "data_transformed/X_train.parquet"))
+    y_train.to_frame().to_parquet(os.path.join(execution_date, "data_transformed/y_train.parquet"))
 
-    X_val_tr.to_parquet("data_transformed/X_val.parquet")
-    y_val.to_frame().to_parquet("data_transformed/y_val.parquet")
+    X_val_tr.to_parquet(os.path.join(execution_date, "data_transformed/X_val.parquet"))
+    y_val.to_frame().to_parquet(os.path.join(execution_date, "data_transformed/y_val.parquet"))
 
-    X_test_tr.to_parquet("data_transformed/X_test.parquet")
-    y_test.to_frame().to_parquet("data_transformed/y_test.parquet")
+    X_test_tr.to_parquet(os.path.join(execution_date, "data_transformed/X_test.parquet"))
+    y_test.to_frame().to_parquet(os.path.join(execution_date, "data_transformed/y_test.parquet"))
 
     # Optional: save the pipeline using joblib
-    joblib.dump(features_pipeline, "data_transformed/features_pipeline.pkl")
+    joblib.dump(features_pipeline, os.path.join(execution_date, "data_transformed/features_pipeline.pkl"))

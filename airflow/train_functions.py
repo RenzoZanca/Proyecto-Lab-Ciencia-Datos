@@ -22,20 +22,23 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 import pandas as pd
 import mlflow
 import joblib
+import json
 import os
 
 def detect_drift(train_data):
     pass
 
 # TO-DO: agregar mlflow para trackear los resultados
-def optimize_hyperparameters():
+def optimize_hyperparameters(**kwargs):
+
+    execution_date = kwargs['ds']
 
     # Load the data
-    X_train_tr = pd.read_parquet("data_transformed/X_train.parquet")
-    y_train = pd.read_parquet("data_transformed/y_train.parquet")["target_column_name"]
+    X_train_tr = pd.read_parquet(os.path.join(execution_date, "data_transformed/X_train.parquet"))
+    y_train = pd.read_parquet(os.path.join(execution_date, "data_transformed/y_train.parquet"))["label"]
 
-    X_val_tr = pd.read_parquet("data_transformed/X_val.parquet")
-    y_val = pd.read_parquet("data_transformed/y_val.parquet")["target_column_name"]
+    X_val_tr = pd.read_parquet((os.path.join(execution_date, "data_transformed/X_val.parquet")))
+    y_val = pd.read_parquet((os.path.join(execution_date, "data_transformed/y_val.parquet"))["label"])
 
     dtrain = xgb.DMatrix(X_train_tr, label=y_train)
     dval   = xgb.DMatrix(X_val_tr,   label=y_val)
@@ -112,60 +115,28 @@ def optimize_hyperparameters():
         if f1 > best_f1:
             best_f1, best_thr = f1, thr
 
-    return params_final, best_thr
-
-def train_model(parameters):
-    import pandas as pd
-    import xgboost as xgb
-    import joblib
-    from sklearn.metrics import classification_report
-
-    # Cargar datos
-    X_train_tr = pd.read_parquet("data_transformed/X_train.parquet")
-    y_train = pd.read_parquet("data_transformed/y_train.parquet")["target_column_name"]
-
-    X_test = pd.read_parquet("data_transformed/X_test.parquet")
-    y_test = pd.read_parquet("data_transformed/y_test.parquet")["target_column_name"]
-
-    dtrain = xgb.DMatrix(X_train_tr, label=y_train)
-    dtest = xgb.DMatrix(X_test)
-
-    # Entrenar booster final
-    booster = xgb.train(
-        params=parameters,
-        dtrain=dtrain,
-        num_boost_round=parameters["n_estimators"],
-        evals=[(dtrain, "train")],
-        early_stopping_rounds=30,
-        verbose_eval=False
-    )
-
-    # Predicciones y evaluación en test
-    probs_test = booster.predict(dtest)
-    best_thr = parameters.get("threshold", 0.5)
-    preds_test = (probs_test > best_thr).astype(int)
-
-    print("→ Reporte final en TEST:")
-    print(classification_report(y_test, preds_test))
-
-    # Guardar modelo
-    joblib.dump(booster, "data_transformed/xgb_model.bin")
+    # guardar los resultados
+    os.makedirs(os.path.join(execution_date, "train"), exist_ok=True)
+    with open(os.path.join(execution_date, "train/optuna_params.json"), "w") as f:
+        json.dump(params_final, f)
 
 
-def train_model(parameters):
+def train_model(**kwargs):
     
-    # Crear carpeta 'train' si no existe
-    os.makedirs("train", exist_ok=True)
-
+    execution_date = kwargs['ds']
     # Cargar datos
-    X_train_tr = pd.read_parquet("data_transformed/X_train.parquet")
-    y_train = pd.read_parquet("data_transformed/y_train.parquet")["target_column_name"]
+    X_train_tr = pd.read_parquet(os.path.join(execution_date, "data_transformed/X_train.parquet"))
+    y_train = pd.read_parquet((os.path.join(execution_date, "data_transformed/y_train.parquet")))["label"]
 
-    X_test = pd.read_parquet("data_transformed/X_test.parquet")
-    y_test = pd.read_parquet("data_transformed/y_test.parquet")["target_column_name"]
+    X_test = pd.read_parquet((os.path.join(execution_date, "data_transformed/X_test.parquet")))
+    y_test = pd.read_parquet((os.path.join(execution_date, "data_transformed/y_test.parquet")))["label"]
 
     dtrain = xgb.DMatrix(X_train_tr, label=y_train)
     dtest = xgb.DMatrix(X_test)
+
+    # Cargar parámetros de Optuna
+    with open(os.path.join(execution_date, "train/optuna_params.json"), "r") as f:
+        parameters = json.load(f)
 
     # Entrenar booster final
     booster = xgb.train(
@@ -188,14 +159,14 @@ def train_model(parameters):
     print(report)
 
     # Guardar modelo
-    joblib.dump(booster, "train/xgb_model.bin")
+    joblib.dump(booster, os.path.join(execution_date, "train/xgb_model.bin"))
 
     # Guardar threshold
-    with open("train/threshold.txt", "w") as f:
+    with open(os.path.join(execution_date, "train/threshold.txt", "w")) as f:
         f.write(str(best_thr))
 
     # Guardar reporte
-    with open("train/classification_report.txt", "w") as f:
+    with open(os.path.join(execution_date, "train/classification_report.txt", "w")) as f:
         f.write(report)
 
 
