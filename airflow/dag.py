@@ -7,7 +7,7 @@ from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import PythonOperator, BranchPythonOperator
 import pandas as pd
 from datetime import datetime
-from data_functions import get_data, process_data, holdout, feature_engineering
+from data_functions import process_data, holdout, feature_engineering
 from train_functions import detect_drift, optimize_hyperparameters, train_model, evaluate_model, export_model
 from predictions_functions import run_prediction, get_products
 

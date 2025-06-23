@@ -117,7 +117,8 @@ def finalize_dataset(tx):
     return df
 
 # Función principal para procesar los datos
-def process_data(data):
+def process_data():
+    data = get_data()
     clients = process_clients(data['clientes'])
     products = process_products(data['productos'])
     transactions = process_transactions(data['transacciones'])
@@ -125,7 +126,10 @@ def process_data(data):
     combinations = create_weekly_combinations(transactions)
     df_combined = enrich_combinations_with_transactions(combinations, transactions)
     tx = merge_all_data(df_combined, clients, products)
-    return finalize_dataset(tx)
+    df_processed = finalize_dataset(tx)
+    # guardar el DataFrame procesado como parquet
+    os.makedirs("data_processed", exist_ok=True)
+    df_processed.to_parquet("data_processed/df_processed.parquet", index=False)
 
 # ----------------------------------------------------------------------------
 
@@ -143,7 +147,8 @@ def temporal_undersample(df, ratio=4, time_col='week', label_col='label', random
     return pd.concat(parts).sample(frac=1, random_state=random_state)
 
 # Divide los datos en conjuntos de entrenamiento, validación y prueba
-def holdout(df):
+def holdout():
+    df = pd.read_parquet("data_processed/df_processed.parquet")
     df_final_ord = df.sort_values("week")
     train_cut = df_final_ord["week"].quantile(0.70)
     val_cut   = df_final_ord["week"].quantile(0.85)
@@ -154,16 +159,11 @@ def holdout(df):
     # Aplicar undersampling temporal al conjunto de entrenamiento
     train_df = temporal_undersample(train_df, ratio=4)
 
-    splits = {
-        'X_train': train_df.drop(columns=['label']),
-        'y_train': train_df['label'],
-        'X_val': val_df.drop(columns=['label']),
-        'y_val': val_df['label'],
-        'X_test': test_df.drop(columns=['label']),
-        'y_test': test_df['label']
-    }
-
-    return splits
+    # guardar los DataFrames de entrenamiento, validación y prueba
+    os.makedirs("data_holdout", exist_ok=True)
+    train_df.to_parquet("data_holdout/train_df.parquet", index=False)
+    val_df.to_parquet("data_holdout/val_df.parquet", index=False)
+    test_df.to_parquet("data_holdout/test_df.parquet", index=False)
 
 # ----------------------------------------------------------------------------
 
@@ -199,8 +199,8 @@ def extract_date_features(X):
 
 
 # Función principal de ingeniería de características  
-def feature_engineering(data, splits):
-    transactions = process_transactions(data['transacciones'])
+def feature_engineering():
+    transactions = process_transactions(pd.read_parquet("data/transacciones.parquet"))
     client_trans = (
         transactions
             .groupby("customer_id")["purchase_date"]
@@ -291,24 +291,36 @@ def feature_engineering(data, splits):
         ("preprocessing",     preprocessor),
     ])
 
+    # Cargar los datos de holdout
+    train_df = pd.read_parquet("data_holdout/train_df.parquet")
+    val_df   = pd.read_parquet("data_holdout/val_df.parquet")
+    test_df  = pd.read_parquet("data_holdout/test_df.parquet")
+    # Separar características y etiquetas
+    X_train = train_df.drop(columns=["label"])
+    y_train = train_df["label"]
+    X_val   = val_df.drop(columns=["label"])
+    y_val   = val_df["label"]
+    X_test  = test_df.drop(columns=["label"])
+    y_test  = test_df["label"]
 
-    features_pipeline.fit(X=splits['X_train'], y=splits['y_train'])
-    X_train_tr = features_pipeline.transform(splits['X_train'])
-    X_val_tr   = features_pipeline.transform(splits['X_val'])
-    X_test_tr  = features_pipeline.transform(splits['X_test'])
+    # Ajustar y transformar los datos
+    features_pipeline.fit(X=X_train, y=y_train)
+    X_train_tr = features_pipeline.transform(X_train)
+    X_val_tr   = features_pipeline.transform(X_val)
+    X_test_tr  = features_pipeline.transform(X_test)
 
     # Make directory if it doesn't exist
     os.makedirs("data_transformed", exist_ok=True)
 
     # Save as parquet (or use .to_csv("filename.csv") if preferred)
     X_train_tr.to_parquet("data_transformed/X_train.parquet")
-    splits['y_train'].to_frame().to_parquet("data_transformed/y_train.parquet")
+    y_train.to_frame().to_parquet("data_transformed/y_train.parquet")
 
     X_val_tr.to_parquet("data_transformed/X_val.parquet")
-    splits['y_val'].to_frame().to_parquet("data_transformed/y_val.parquet")
+    y_val.to_frame().to_parquet("data_transformed/y_val.parquet")
 
     X_test_tr.to_parquet("data_transformed/X_test.parquet")
-    splits['y_test'].to_frame().to_parquet("data_transformed/y_test.parquet")
+    y_test.to_frame().to_parquet("data_transformed/y_test.parquet")
 
     # Optional: save the pipeline using joblib
     joblib.dump(features_pipeline, "data_transformed/features_pipeline.pkl")
