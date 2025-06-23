@@ -22,6 +22,8 @@ from sklearn.preprocessing import (
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
+import os
+import joblib
 
 # Obtiene los datos de la fuente
 def get_data():
@@ -295,12 +297,18 @@ def feature_engineering(data, splits):
     X_val_tr   = features_pipeline.transform(splits['X_val'])
     X_test_tr  = features_pipeline.transform(splits['X_test'])
 
-    return {
-        'X_train': X_train_tr,
-        'y_train': splits['y_train'],
-        'X_val': X_val_tr,
-        'y_val': splits['y_val'],
-        'X_test': X_test_tr,
-        'y_test': splits['y_test'],
-        'features_pipeline': features_pipeline
-    }
+    # Make directory if it doesn't exist
+    os.makedirs("data_transformed", exist_ok=True)
+
+    # Save as parquet (or use .to_csv("filename.csv") if preferred)
+    X_train_tr.to_parquet("data_transformed/X_train.parquet")
+    splits['y_train'].to_frame().to_parquet("data_transformed/y_train.parquet")
+
+    X_val_tr.to_parquet("data_transformed/X_val.parquet")
+    splits['y_val'].to_frame().to_parquet("data_transformed/y_val.parquet")
+
+    X_test_tr.to_parquet("data_transformed/X_test.parquet")
+    splits['y_test'].to_frame().to_parquet("data_transformed/y_test.parquet")
+
+    # Optional: save the pipeline using joblib
+    joblib.dump(features_pipeline, "data_transformed/features_pipeline.pkl")
