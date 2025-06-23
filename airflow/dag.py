@@ -7,7 +7,7 @@ from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import PythonOperator, BranchPythonOperator
 import pandas as pd
 from datetime import datetime
-from data_functions import get_data, process_data, feature_engineering, export_data
+from data_functions import get_data, process_data, holdout, feature_engineering
 from train_functions import detect_drift, optimize_hyperparameters, train_model, evaluate_model, export_model
 from predictions_functions import run_prediction, get_products
 
@@ -39,16 +39,16 @@ with DAG(
         python_callable=process_data
     )
 
-    # 4) Feature engineering
+    # 4) Holdout
+    holdout = BranchPythonOperator(
+        task_id='holdout',
+        python_callable=holdout,
+    )
+
+    # 5) Feature engineering
     feature_engineering = PythonOperator(
         task_id='feature_engineering',
         python_callable=feature_engineering
-    )
-
-    # 5) Exportar datos
-    export_data = PythonOperator(
-        task_id='export_data',
-        python_callable=export_data
     )
 
     # 6) Detectar drift
