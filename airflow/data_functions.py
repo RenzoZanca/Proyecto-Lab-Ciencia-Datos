@@ -3,6 +3,7 @@ estructura planteada:
 
 get_data: obtiene los datos de la fuente
 process_data: procesa los datos obtenidos (limpieza, transformación, etc.)
+holdout: divide los datos en conjuntos de entrenamiento, validación y prueba
 feature_engineering: realiza la ingeniería de características
 export_data: exporta los datos procesados a un archivo
 """
@@ -10,6 +11,7 @@ export_data: exporta los datos procesados a un archivo
 import pandas as pd
 from sklearn.cluster import DBSCAN
 import itertools
+from sklearn.utils import resample
 
 # Obtiene los datos de la fuente
 def get_data():
@@ -24,7 +26,8 @@ def get_data():
     }
     return data
 
-# funciones auxiliares para el procesamiento de datos
+# funciones auxiliares para el procesamiento de datos:
+
 def process_clients(clients):
     coordinates = clients[['X', 'Y']]
     dbscan = DBSCAN(eps=0.01, min_samples=10)
@@ -48,6 +51,7 @@ def process_transactions(transactions):
     transactions.loc[transactions['purchase_date'] > '2024-12-29', 'week'] = 53
     return transactions
 
+# Crea combinaciones semanales de productos, clientes y semanas
 def create_weekly_combinations(transactions):
     product_ids = transactions['product_id'].unique()
     customer_ids = transactions['customer_id'].unique()
@@ -55,6 +59,8 @@ def create_weekly_combinations(transactions):
     return pd.DataFrame(list(itertools.product(product_ids, customer_ids, weeks)),
                         columns=['product_id', 'customer_id', 'week'])
 
+# Enriquecer las combinaciones con transacciones
+# para obtener etiquetas y características adicionales
 def enrich_combinations_with_transactions(combinations, transactions):
     df = combinations.merge(transactions, on=['product_id', 'customer_id', 'week'], how='left')
     df['label'] = df['order_id'].notna().astype(int)
@@ -69,6 +75,7 @@ def enrich_combinations_with_transactions(combinations, transactions):
     )
     return df
 
+# Combina los datos de transacciones con clientes y productos
 def merge_all_data(df_combined, clients, products):
     tx = df_combined.merge(
         clients, on="customer_id", how="left",
@@ -80,6 +87,7 @@ def merge_all_data(df_combined, clients, products):
     )
     return tx.drop(columns=["client_join", "product_join"])
 
+# Finaliza el dataset con las columnas necesarias y tipos de datos adecuados
 def finalize_dataset(tx):
     keep = [
         'purchase_date','customer_id','product_id','week',
@@ -105,6 +113,38 @@ def process_data(data):
     tx = merge_all_data(df_combined, clients, products)
     return finalize_dataset(tx)
 
+
+def temporal_undersample(df, ratio=4, time_col='week', label_col='label', random_state=42):
+    """Aplica undersampling estratificado por semana, manteniendo todos los positivos y una proporción limitada de negativos."""
+    parts = []
+    for week, grp in df.groupby(time_col):
+        pos = grp[grp[label_col] == 1]
+        neg = grp[grp[label_col] == 0]
+        n_neg = min(len(neg), len(pos) * ratio)
+        neg_sub = resample(neg, replace=False, n_samples=n_neg, random_state=random_state)
+        parts.append(pd.concat([pos, neg_sub]))
+    return pd.concat(parts).sample(frac=1, random_state=random_state)
+
+# Divide los datos en conjuntos de entrenamiento, validación y prueba
+def holdout(df):
+    df_final_ord = df.sort_values("week")
+    train_cut = df_final_ord["week"].quantile(0.70)
+    val_cut   = df_final_ord["week"].quantile(0.85)
+    train_df = df_final_ord[df_final_ord["week"] <= train_cut]
+    val_df   = df_final_ord[(df_final_ord["week"] > train_cut) & (df_final_ord["week"] <= val_cut)]
+    test_df  = df_final_ord[df_final_ord["week"] > val_cut]
+
+    # Aplicar undersampling temporal al conjunto de entrenamiento
+    train_df = temporal_undersample(train_df, ratio=4)
+
+    X_train = train_df.drop(columns=["label"])
+    y_train = train_df["label"]
+    X_val = val_df.drop(columns=["label"])
+    y_val = val_df["label"]
+    X_test = test_df.drop(columns=["label"])
+    y_test = test_df["label"]
+
+    return X_train, y_train, X_val, y_val, X_test, y_test
     
 def feature_engineering(data):
     pass
