@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  airflow:
+    build: .
+    container_name: sodai-airflow
+    ports:
+      - "8080:8080"
+    # Las variables de entorno están configuradas en el Dockerfile
+    volumes:
+      # Montar datos y resultados para ver outputs en tiempo real
+      - ../2024-12-01:/app/airflow/2024-12-01
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s 

@@ -1,0 +1,68 @@
+{
+  "metadata": {
+    "total_drift_score": 6.0,
+    "drift_threshold": 2.0,
+    "drift_detected": true,
+    "reference_source": "baseline_historico",
+    "features_analyzed": 7,
+    "current_data_size": 301248,
+    "reference_data_size": 345075,
+    "execution_date": "2024-12-01"
+  },
+  "feature_analysis": {
+    "Y": {
+      "p_value": 0.00022713431552764685,
+      "statistic": 0.005312786354949028,
+      "mean_diff_normalized": 0.0035564912005351477,
+      "variance_ratio": 1.071083325335397,
+      "drift_detected": true,
+      "reference_source": "baseline_historico"
+    },
+    "X": {
+      "p_value": 0.0025606472219573536,
+      "statistic": 0.0045493476977113145,
+      "mean_diff_normalized": 0.0028295373828020553,
+      "variance_ratio": 1.0717225414268559,
+      "drift_detected": true,
+      "reference_source": "baseline_historico"
+    },
+    "num_deliver_per_week": {
+      "p_value": 2.8181700256974853e-09,
+      "statistic": 0.007958604615146567,
+      "mean_diff_normalized": 0.02300394270540128,
+      "variance_ratio": 1.0839729508357807,
+      "drift_detected": true,
+      "reference_source": "baseline_historico"
+    },
+    "size": {
+      "p_value": 0.0,
+      "statistic": 0.08341945591538069,
+      "mean_diff_normalized": 0.04370043205412091,
+      "variance_ratio": 1.4007556819360434,
+      "drift_detected": true,
+      "reference_source": "baseline_historico"
+    },
+    "items_last_week": {
+      "p_value": 0.0,
+      "statistic": 0.06211056598479181,
+      "mean_diff_normalized": 0.08855996348234434,
+      "variance_ratio": 0.2590282962807633,
+      "drift_detected": true,
+      "reference_source": "baseline_historico"
+    },
+    "items_roll4_mean": {
+      "p_value": 1.502555719762293e-34,
+      "statistic": 0.05331412136622071,
+      "mean_diff_normalized": 0.04501823055899772,
+      "variance_ratio": 1.7165625219011889,
+      "drift_detected": true,
+      "reference_source": "baseline_historico"
+    },
+    "brand_categorical": {
+      "p_value": 1.0,
+      "statistic": 0.08447122234386172,
+      "drift_detected": false,
+      "reference_source": "baseline_historico"
+    }
+  }
+}

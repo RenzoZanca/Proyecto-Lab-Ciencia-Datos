@@ -1,2 +1,11 @@
+.gitignore
 venv
 airflow/data
+.DS_Store
+airflow/run_airflow_demo.sh
+demo_airflow.sh
+run_pipeline.py
+__pycache__/
+.DS_Store
+.DS_Store
+airflow/__pycache__/

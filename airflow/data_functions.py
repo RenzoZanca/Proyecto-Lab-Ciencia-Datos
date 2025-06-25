@@ -26,23 +26,52 @@ import os
 import joblib
 
 # Obtiene los datos de la fuente
-def get_data(execution_date):
-     # nota: cambiar paths en un futuro (probablemente según fecha)
-    transacciones = pd.read_parquet(os.path.join(execution_date, 'data/transacciones.parquet'))
-    clientes = pd.read_parquet(os.path.join(execution_date, 'data/clientes.parquet'))
-    productos = pd.read_parquet(os.path.join(execution_date, 'data/productos.parquet'))
-    data = {
+def get_data(**kwargs):
+    """
+    Obtiene los datos de la fuente según la fecha de ejecución.
+    En producción, estos datos aparecen  en el directorio de trabajo.
+    """
+    execution_date = kwargs['ds']
+    
+   
+    os.makedirs(os.path.join(execution_date, "data"), exist_ok=True)
+    
+    # Paths de los archivos de datos
+    
+    data_dir = os.path.join(execution_date, 'data')
+    
+    try:
+        transacciones = pd.read_parquet(os.path.join(data_dir, 'transacciones.parquet'))
+        clientes = pd.read_parquet(os.path.join(data_dir, 'clientes.parquet'))
+        productos = pd.read_parquet(os.path.join(data_dir, 'productos.parquet'))
+        
+        print(f"Datos cargados exitosamente para fecha: {execution_date}")
+        print(f"   - Transacciones: {len(transacciones)} registros")
+        print(f"   - Clientes: {len(clientes)} registros")
+        print(f"   - Productos: {len(productos)} registros")
+        
+    except FileNotFoundError as e:
+        print(f"Archivo no encontrado: {e}")
+        print(f"Para esta demo, copie los archivos base a: {data_dir}/")
+        raise
+    
+    return {
         'transacciones': transacciones,
         'clientes': clientes,
         'productos': productos
     }
-    return data
 
 # ----------------------------------------------------------------------------
 
 # Procesamiento de datos:
 
 def process_clients(clients):
+    clients = clients.copy()
+    
+    # Manejar valores NaN en coordenadas ANTES del clustering
+    clients['X'] = clients['X'].fillna(clients['X'].median())
+    clients['Y'] = clients['Y'].fillna(clients['Y'].median())
+    
     coordinates = clients[['X', 'Y']]
     dbscan = DBSCAN(eps=0.01, min_samples=10)
     dbscan.fit(coordinates)
@@ -57,12 +86,23 @@ def process_products(products):
     return products
 
 def process_transactions(transactions):
+    transactions = transactions.copy()
     transactions.drop_duplicates(inplace=True)
     transactions.dropna(inplace=True)
     transactions = transactions[transactions['items'] > 0]
     transactions['items'] = transactions['items'].astype('int64')
-    transactions['week'] = transactions['purchase_date'].dt.isocalendar().week
-    transactions.loc[transactions['purchase_date'] > '2024-12-29', 'week'] = 53
+    
+    # Manejar tanto datos crudos (con purchase_date) como procesados (con week)
+    if 'purchase_date' in transactions.columns and 'week' not in transactions.columns:
+        # Datos crudos - convertir purchase_date a week
+        transactions['purchase_date'] = pd.to_datetime(transactions['purchase_date'])
+        transactions['week'] = transactions['purchase_date'].dt.isocalendar().week
+        transactions.loc[transactions['purchase_date'] > '2024-12-29', 'week'] = 53
+    elif 'week' not in transactions.columns:
+        # Si no hay ni purchase_date ni week, es un error
+        raise ValueError("Las transacciones deben tener 'purchase_date' o 'week'")
+    
+    # Si ya tiene 'week', no hacer nada (datos ya procesados)
     return transactions
 
 # Crea combinaciones semanales de productos, clientes y semanas
@@ -103,15 +143,25 @@ def merge_all_data(df_combined, clients, products):
 
 # Finaliza el dataset con las columnas necesarias y tipos de datos adecuados
 def finalize_dataset(tx):
+    # Columnas base requeridas
     keep = [
-        'purchase_date','customer_id','product_id','week',
+        'customer_id','product_id','week',
         'items_last_week','items_roll4_mean',
         'customer_type','Y','X','num_deliver_per_week','custom_zone',
         'brand','category','sub_category','segment','package','size',
         'label'
     ]
+    
+    # Agregar purchase_date solo si existe
+    if 'purchase_date' in tx.columns:
+        keep.insert(0, 'purchase_date')
+    
     df = tx[keep].copy()
-    df['purchase_date'] = pd.to_datetime(df['purchase_date'])
+    
+    # Procesar purchase_date solo si existe
+    if 'purchase_date' in df.columns:
+        df['purchase_date'] = pd.to_datetime(df['purchase_date'])
+    
     df[['customer_type','brand','category','sub_category','segment','package']] = \
         df[['customer_type','brand','category','sub_category','segment','package']].astype('category')
     return df
@@ -119,7 +169,7 @@ def finalize_dataset(tx):
 # Función principal para procesar los datos
 def process_data(**kwargs):
     execution_date = kwargs['ds']
-    data = get_data(execution_date=execution_date)
+    data = get_data(**kwargs)
     clients = process_clients(data['clientes'])
     products = process_products(data['productos'])
     transactions = process_transactions(data['transacciones'])
@@ -152,14 +202,34 @@ def holdout(**kwargs):
     execution_date = kwargs['ds']
     df = pd.read_parquet(os.path.join(execution_date, "data_processed/df_processed.parquet"))
     df_final_ord = df.sort_values("week")
-    train_cut = df_final_ord["week"].quantile(0.70)
-    val_cut   = df_final_ord["week"].quantile(0.85)
+    
+    # Ajustar proporciones para compensar el undersampling
+    # Usamos más datos para train inicialmente
+    train_cut = df_final_ord["week"].quantile(0.80)  # 80% para train (luego se reduce con undersampling)
+    val_cut   = df_final_ord["week"].quantile(0.90)  # 10% para val
     train_df = df_final_ord[df_final_ord["week"] <= train_cut]
     val_df   = df_final_ord[(df_final_ord["week"] > train_cut) & (df_final_ord["week"] <= val_cut)]
-    test_df  = df_final_ord[df_final_ord["week"] > val_cut]
+    test_df  = df_final_ord[df_final_ord["week"] > val_cut]  # 10% para test
+
+    print(f"Tamaños antes del undersampling:")
+    print(f"   - Train: {len(train_df):,} ({len(train_df)/len(df_final_ord)*100:.1f}%)")
+    print(f"   - Val:   {len(val_df):,} ({len(val_df)/len(df_final_ord)*100:.1f}%)")
+    print(f"   - Test:  {len(test_df):,} ({len(test_df)/len(df_final_ord)*100:.1f}%)")
 
     # Aplicar undersampling temporal al conjunto de entrenamiento
-    train_df = temporal_undersample(train_df, ratio=4)
+    train_df_original_size = len(train_df)
+    train_df = temporal_undersample(train_df, ratio=2)  # Ratio más conservador
+    
+    print(f" Tamaños después del undersampling:")
+    print(f"   - Train: {len(train_df):,} ({len(train_df)/len(df_final_ord)*100:.1f}%) - Reducido en {(1-len(train_df)/train_df_original_size)*100:.1f}%")
+    print(f"   - Val:   {len(val_df):,} ({len(val_df)/len(df_final_ord)*100:.1f}%)")
+    print(f"   - Test:  {len(test_df):,} ({len(test_df)/len(df_final_ord)*100:.1f}%)")
+    
+    # Verificar balances
+    print(f" Distribución de clases:")
+    print(f"   - Train: {train_df['label'].value_counts().to_dict()}")
+    print(f"   - Val:   {val_df['label'].value_counts().to_dict()}")
+    print(f"   - Test:  {test_df['label'].value_counts().to_dict()}")
 
     # guardar los DataFrames de entrenamiento, validación y prueba
     os.makedirs(os.path.join(execution_date, "data_holdout"), exist_ok=True)
@@ -191,32 +261,49 @@ def semana_a_fecha_random(week, year=2024):
 def extract_date_features(X):
     X = X.copy()
     def pick_date(row):
-        if pd.notna(row["purchase_date"]):
+        # Usar purchase_date si existe y no es nulo, sino generar fecha desde week
+        if "purchase_date" in row.index and pd.notna(row["purchase_date"]):
             return row["purchase_date"]
         return semana_a_fecha_random(int(row["week"]))
+    
     X["date"]  = X.apply(pick_date, axis=1)
     X["month"] = X["date"].dt.month.astype("category")
     X["day"]   = X["date"].dt.day.astype("category")
-    return X.drop(columns="purchase_date")
+    
+    # Eliminar purchase_date solo si existe
+    if "purchase_date" in X.columns:
+        X = X.drop(columns="purchase_date")
+    
+    return X
 
 
 # Función principal de ingeniería de características  
 def feature_engineering(**kwargs):
     execution_date = kwargs['ds']
-    transactions = process_transactions(pd.read_parquet(os.path.join(execution_date, "data/transacciones.parquet")))
+    
+    # Usar solo datos de entrenamiento para calcular estadísticas
+    train_df = pd.read_parquet(os.path.join(execution_date, "data_holdout/train_df.parquet"))
+    
+    #  Las estadísticas se calculan SOLO con datos de entrenamiento
+    # Esto evita data leakage y garantiza reproducibilidad en producción
+    print(" Calculando estadísticas SOLO con datos de entrenamiento...")
+    
+    # Contar transacciones por cliente - usar columna disponible
+    count_col = 'purchase_date' if 'purchase_date' in train_df.columns else 'week'
     client_trans = (
-        transactions
-            .groupby("customer_id")["purchase_date"]
+        train_df
+            .groupby("customer_id")[count_col]
             .count()
             .reset_index(name="total_transactions")
     )
 
-    # Promedios semanales por cliente
+    # Promedios semanales por cliente (solo entrenamiento)
+    
     weekly_agg = (
-        transactions
+        train_df
         .groupby(["customer_id","week"])
         .agg(
-            items_per_week    = ("items","sum"),
+            items_per_week    = ("items_last_week","sum"),  
             products_per_week = ("product_id","count")
         )
         .groupby("customer_id")
@@ -228,14 +315,36 @@ def feature_engineering(**kwargs):
         })
     )
 
-    # Periodo medio de recompra por producto (en días)
-    product_buyback = (
-        transactions
-        .sort_values(["product_id","purchase_date"])
-        .groupby("product_id")["purchase_date"]
-        .apply(lambda x: x.diff().mean().days)
-        .reset_index(name="avg_time_between_sales")
-    )
+    # Periodo medio de recompra por producto (solo entrenamiento)
+    if 'purchase_date' in train_df.columns:
+        product_buyback = (
+            train_df
+            .sort_values(["product_id","purchase_date"])
+            .groupby("product_id")["purchase_date"]
+            .apply(lambda x: x.diff().mean().days)
+            .reset_index(name="avg_time_between_sales")
+        )
+    else:
+        # Si no hay purchase_date, usar un valor aproximado basado en weeks
+        product_buyback = (
+            train_df
+            .sort_values(["product_id","week"])
+            .groupby("product_id")["week"]
+            .apply(lambda x: x.diff().mean() * 7 if len(x) > 1 else 7)  # weeks * 7 days
+            .reset_index(name="avg_time_between_sales")
+        )
+    
+    print(f"Estadísticas calculadas:")
+    print(f"   - Clientes únicos: {len(client_trans)}")
+    print(f"   - Promedios semanales: {len(weekly_agg)}")
+    print(f"   - Productos con historial: {len(product_buyback)}")
+    
+    # Guardar estas estadísticas para usarlas en predicción
+    stats_dir = os.path.join(execution_date, "feature_stats")
+    os.makedirs(stats_dir, exist_ok=True)
+    client_trans.to_parquet(os.path.join(stats_dir, "client_stats.parquet"), index=False)
+    weekly_agg.to_parquet(os.path.join(stats_dir, "weekly_stats.parquet"), index=False)
+    product_buyback.to_parquet(os.path.join(stats_dir, "product_stats.parquet"), index=False)
 
     date_transformer = FunctionTransformer(extract_date_features)
 
@@ -294,10 +403,9 @@ def feature_engineering(**kwargs):
         ("preprocessing",     preprocessor),
     ])
 
-    # Cargar los datos de holdout
-    train_df = pd.read_parquet("data_holdout/train_df.parquet")
-    val_df   = pd.read_parquet("data_holdout/val_df.parquet")
-    test_df  = pd.read_parquet("data_holdout/test_df.parquet")
+    # Cargar los datos de holdout no necesitamos recalcular train_df)
+    val_df   = pd.read_parquet(os.path.join(execution_date, "data_holdout/val_df.parquet"))
+    test_df  = pd.read_parquet(os.path.join(execution_date, "data_holdout/test_df.parquet"))
     # Separar características y etiquetas
     X_train = train_df.drop(columns=["label"])
     y_train = train_df["label"]
@@ -312,10 +420,10 @@ def feature_engineering(**kwargs):
     X_val_tr   = features_pipeline.transform(X_val)
     X_test_tr  = features_pipeline.transform(X_test)
 
-    # Make directory if it doesn't exist
+   
     os.makedirs(os.path.join(execution_date, "data_transformed"), exist_ok=True)
 
-    # Save as parquet (or use .to_csv("filename.csv") if preferred)
+   
     X_train_tr.to_parquet(os.path.join(execution_date, "data_transformed/X_train.parquet"))
     y_train.to_frame().to_parquet(os.path.join(execution_date, "data_transformed/y_train.parquet"))
 
@@ -325,5 +433,5 @@ def feature_engineering(**kwargs):
     X_test_tr.to_parquet(os.path.join(execution_date, "data_transformed/X_test.parquet"))
     y_test.to_frame().to_parquet(os.path.join(execution_date, "data_transformed/y_test.parquet"))
 
-    # Optional: save the pipeline using joblib
+   
     joblib.dump(features_pipeline, os.path.join(execution_date, "data_transformed/features_pipeline.pkl"))
