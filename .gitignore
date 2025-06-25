@@ -1,11 +1,42 @@
-.gitignore
-venv
-airflow/data
-.DS_Store
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Airflow
+airflow/data/
+airflow/logs/
+airflow/__pycache__/
 airflow/run_airflow_demo.sh
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Demo scripts
 demo_airflow.sh
 run_pipeline.py
-__pycache__/
-.DS_Store
-.DS_Store
-airflow/__pycache__/
+
+# Model artifacts (opcional - depende si quieres versionarlos)
+# *.pkl
+# *.bin
