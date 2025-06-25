@@ -276,7 +276,7 @@ def decide_retraining(**kwargs):
         print(f"   Archivo drift: {drift_file}")
         
         if not os.path.exists(drift_file):
-            print(f"⚠️ Archivo drift no existe, reentrenando por seguridad")
+            print(f" Archivo drift no existe, reentrenando por seguridad")
             return 'optimize_hyperparameters'
         
         with open(drift_file, "r") as f:
@@ -287,18 +287,18 @@ def decide_retraining(**kwargs):
         print(f"   Drift detected: {drift_detected}")
         
         if drift_detected:
-            print("🚨 DRIFT DETECTADO - Reentrenando modelo")
+            print(" DRIFT DETECTADO - Reentrenando modelo")
             return 'optimize_hyperparameters'
         else:
-            print("✅ SIN DRIFT - Reutilizando modelo previo")
+            print(" SIN DRIFT - Reutilizando modelo previo")
             return 'copy_previous_model'
             
     except Exception as e:
-        print(f"⚠️ Error leyendo drift detection: {e}")
+        print(f" Error leyendo drift detection: {e}")
         import traceback
         print(f"   Traceback: {traceback.format_exc()}")
-        print("🔄 Reentrenando por seguridad")
-        return 'optimize_hyperparameters'
+        print(" Reentrenando por seguridad")
+        return 'optimize_hyperparameters'   
 
 
 def copy_previous_model(**kwargs):
@@ -307,7 +307,7 @@ def copy_previous_model(**kwargs):
     """
     execution_date = kwargs['ds']
     
-    print("📋 Copiando modelo previo (sin drift detectado)...")
+    print(" Copiando modelo previo (sin drift detectado)...")
     
     try:
         import shutil
@@ -339,7 +339,7 @@ def copy_previous_model(**kwargs):
                             shutil.rmtree(dst)
                         shutil.copytree(src, dst)
                 
-                print(f"✅ Modelo copiado desde: {prev_date_str}")
+                print(f" Modelo copiado desde: {prev_date_str}")
                 
                 # Crear metadatos de copia
                 copy_metadata = {
@@ -356,8 +356,8 @@ def copy_previous_model(**kwargs):
         raise Exception("No se encontró modelo previo para copiar")
         
     except Exception as e:
-        print(f"❌ Error copiando modelo previo: {e}")
-        print(f"🔄 Fallback: forzando reentrenamiento")
+        print(f" Error copiando modelo previo: {e}")
+        print(f" Fallback: forzando reentrenamiento")
         raise
 
 # TO-DO: agregar mlflow para trackear los resultados
