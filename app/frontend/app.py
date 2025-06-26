@@ -1,5 +1,7 @@
 import gradio as gr
 import requests
+import pandas as pd
+from io import StringIO
 
 def subir_y_predecir(clientes, productos, transacciones):
     files = {
@@ -7,11 +9,11 @@ def subir_y_predecir(clientes, productos, transacciones):
         "productos": productos,
         "transacciones": transacciones
     }
-    response = requests.post("http://localhost:8000/upload_and_predict", files=files) # local development
-    #response = requests.post("http://backend:8000/upload_and_predict", files=files) # docker-compose
+    response = requests.post("http://localhost:8000/upload_and_predict", files=files)
     if response.status_code == 200 and response.headers.get("content-type").startswith("text/csv"):
-        print("Response is a CSV file.")
-        return response.text
+        csv_text = response.text
+        df = pd.read_csv(StringIO(csv_text))
+        return df
     return response.json()
 
 demo = gr.Interface(
@@ -21,7 +23,7 @@ demo = gr.Interface(
         gr.File(label="Productos.parquet"),
         gr.File(label="Transacciones.parquet"),
     ],
-    outputs="text",
+    outputs=gr.Dataframe(type="pandas", interactive=True),
     title="SodAI Drinks 🥤",
     description="Sube los archivos para obtener las predicciones semanales de compra."
 )

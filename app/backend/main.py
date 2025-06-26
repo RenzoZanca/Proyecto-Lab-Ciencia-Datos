@@ -59,23 +59,20 @@ async def upload_and_predict(
 
     # 3. Disparar DAG
     dag_id = "sodAI"
-    """
-    trigger = subprocess.run([
-        "airflow", "dags", "trigger", "-e", execution_date, dag_id
-    ], capture_output=True, text=True)
+    # trigger = subprocess.run([
+    #     "airflow", "dags", "trigger", "-e", execution_date, dag_id
+    # ], capture_output=True, text=True)
 
-    if trigger.returncode != 0:
-        return {"error": f"Error triggering DAG: {trigger.stderr}"}
-    """
-    # 4. Esperar a que termine con éxito o error
-    execution_date_iso = execution_date + "T00:00:00+00:00"
-    #state = wait_for_dag_status(dag_id, execution_date_iso)
-    state = "success"  # Simulamos éxito para pruebas
+    # if trigger.returncode != 0:
+    #     return {"error": f"Error triggering DAG: {trigger.stderr}"}
+    # # 4. Esperar a que termine con éxito o error
+    # execution_date_iso = execution_date + "T00:00:00+00:00"
+    # state = wait_for_dag_status(dag_id, execution_date_iso)
+    state = "success"
 
     if state == "success":
-        execution_date = '2024-12-01'  # Simulamos una fecha de ejecución para pruebas
+        execution_date = '2024-12-01'
         base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", execution_date))
-        print(f"Base path for predictions: {base_path}")
         prediction_file = os.path.join(base_path, "predictions", "recommended_products.csv")
         if os.path.exists(prediction_file):
             print(f"Prediction file found: {prediction_file}")
