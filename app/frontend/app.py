@@ -7,8 +7,10 @@ def subir_y_predecir(clientes, productos, transacciones):
         "productos": productos,
         "transacciones": transacciones
     }
-    response = requests.post("http://backend:8000/upload_and_predict", files=files)
-    if response.status_code == 200 and response.headers.get("content-type") == "text/csv":
+    response = requests.post("http://localhost:8000/upload_and_predict", files=files) # local development
+    #response = requests.post("http://backend:8000/upload_and_predict", files=files) # docker-compose
+    if response.status_code == 200 and response.headers.get("content-type").startswith("text/csv"):
+        print("Response is a CSV file.")
         return response.text
     return response.json()
 

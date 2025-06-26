@@ -4,15 +4,16 @@ __pycache__/
 *$py.class
 *.so
 .Python
-venv/
 env/
 ENV/
+venv/
 
 # Airflow
 airflow/data/
 airflow/logs/
 airflow/__pycache__/
 airflow/run_airflow_demo.sh
+runs/
 
 # Logs
 *.log
@@ -40,3 +41,9 @@ run_pipeline.py
 # Model artifacts (opcional - depende si quieres versionarlos)
 # *.pkl
 # *.bin
+
+# gradio
+app/frontend/.gradio/
+
+# despues borrar
+2025-06-26/
