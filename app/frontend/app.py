@@ -9,7 +9,7 @@ def subir_y_predecir(clientes, productos, transacciones):
         "productos": productos,
         "transacciones": transacciones
     }
-    response = requests.post("http://localhost:8000/upload_and_predict", files=files)
+    response = requests.post("http://backend/upload_and_predict", files=files)
     if response.status_code == 200 and response.headers.get("content-type").startswith("text/csv"):
         csv_text = response.text
         df = pd.read_csv(StringIO(csv_text))
