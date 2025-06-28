@@ -12,6 +12,8 @@ from data_functions import get_data, process_data, holdout, feature_engineering
 from train_functions import detect_drift, decide_retraining, copy_previous_model, optimize_hyperparameters, train_model, evaluate_model, export_model
 from predictions_functions import run_prediction, get_products
 
+SHARED_DATA_DIR = "/shared-data"
+
 
 def check_data_exists(**kwargs):
     """
@@ -19,7 +21,8 @@ def check_data_exists(**kwargs):
     Si no existen, salta el procesamiento .
     """
     execution_date = kwargs['ds']
-    data_path = os.path.join(execution_date, "data")
+    base_path = os.path.join(SHARED_DATA_DIR, execution_date)
+    data_path = os.path.join(base_path, "data")
     
     if os.path.exists(data_path):
         files_needed = ['transacciones.parquet', 'clientes.parquet', 'productos.parquet']

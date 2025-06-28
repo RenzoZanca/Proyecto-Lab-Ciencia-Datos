@@ -25,6 +25,8 @@ from sklearn.impute import SimpleImputer
 import os
 import joblib
 
+SHARED_DATA_DIR = "/shared-data"
+
 # Obtiene los datos de la fuente
 def get_data(**kwargs):
     """
@@ -32,13 +34,15 @@ def get_data(**kwargs):
     En producción, estos datos aparecen  en el directorio de trabajo.
     """
     execution_date = kwargs['ds']
+    base_path = os.path.join(SHARED_DATA_DIR, execution_date)
+
     
    
-    os.makedirs(os.path.join(execution_date, "data"), exist_ok=True)
+    os.makedirs(os.path.join(base_path, "data"), exist_ok=True)
     
     # Paths de los archivos de datos
     
-    data_dir = os.path.join(execution_date, 'data')
+    data_dir = os.path.join(base_path, 'data')
     
     try:
         transacciones = pd.read_parquet(os.path.join(data_dir, 'transacciones.parquet'))
@@ -169,6 +173,8 @@ def finalize_dataset(tx):
 # Función principal para procesar los datos
 def process_data(**kwargs):
     execution_date = kwargs['ds']
+    base_path = os.path.join(SHARED_DATA_DIR, execution_date)
+
     data = get_data(**kwargs)
     clients = process_clients(data['clientes'])
     products = process_products(data['productos'])
@@ -179,8 +185,8 @@ def process_data(**kwargs):
     tx = merge_all_data(df_combined, clients, products)
     df_processed = finalize_dataset(tx)
     # guardar el DataFrame procesado como parquet
-    os.makedirs(os.path.join(execution_date, "data_processed"), exist_ok=True)
-    df_processed.to_parquet(os.path.join(execution_date, "data_processed/df_processed.parquet"), index=False)
+    os.makedirs(os.path.join(base_path, "data_processed"), exist_ok=True)
+    df_processed.to_parquet(os.path.join(base_path, "data_processed/df_processed.parquet"), index=False)
 
 # ----------------------------------------------------------------------------
 
@@ -200,7 +206,9 @@ def temporal_undersample(df, ratio=4, time_col='week', label_col='label', random
 # Divide los datos en conjuntos de entrenamiento, validación y prueba
 def holdout(**kwargs):
     execution_date = kwargs['ds']
-    df = pd.read_parquet(os.path.join(execution_date, "data_processed/df_processed.parquet"))
+    base_path = os.path.join(SHARED_DATA_DIR, execution_date)
+
+    df = pd.read_parquet(os.path.join(base_path, "data_processed/df_processed.parquet"))
     df_final_ord = df.sort_values("week")
     
     # Ajustar proporciones para compensar el undersampling
@@ -232,10 +240,10 @@ def holdout(**kwargs):
     print(f"   - Test:  {test_df['label'].value_counts().to_dict()}")
 
     # guardar los DataFrames de entrenamiento, validación y prueba
-    os.makedirs(os.path.join(execution_date, "data_holdout"), exist_ok=True)
-    train_df.to_parquet(os.path.join(execution_date, "data_holdout/train_df.parquet"), index=False)
-    val_df.to_parquet(os.path.join(execution_date, "data_holdout/val_df.parquet"), index=False)
-    test_df.to_parquet(os.path.join(execution_date, "data_holdout/test_df.parquet"), index=False)
+    os.makedirs(os.path.join(base_path, "data_holdout"), exist_ok=True)
+    train_df.to_parquet(os.path.join(base_path, "data_holdout/train_df.parquet"), index=False)
+    val_df.to_parquet(os.path.join(base_path, "data_holdout/val_df.parquet"), index=False)
+    test_df.to_parquet(os.path.join(base_path, "data_holdout/test_df.parquet"), index=False)
 
 # ----------------------------------------------------------------------------
 
@@ -280,9 +288,11 @@ def extract_date_features(X):
 # Función principal de ingeniería de características  
 def feature_engineering(**kwargs):
     execution_date = kwargs['ds']
+    base_path = os.path.join(SHARED_DATA_DIR, execution_date)
+
     
     # Usar solo datos de entrenamiento para calcular estadísticas
-    train_df = pd.read_parquet(os.path.join(execution_date, "data_holdout/train_df.parquet"))
+    train_df = pd.read_parquet(os.path.join(base_path, "data_holdout/train_df.parquet"))
     
     #  Las estadísticas se calculan SOLO con datos de entrenamiento
     # Esto evita data leakage y garantiza reproducibilidad en producción
@@ -340,7 +350,7 @@ def feature_engineering(**kwargs):
     print(f"   - Productos con historial: {len(product_buyback)}")
     
     # Guardar estas estadísticas para usarlas en predicción
-    stats_dir = os.path.join(execution_date, "feature_stats")
+    stats_dir = os.path.join(base_path, "feature_stats")
     os.makedirs(stats_dir, exist_ok=True)
     client_trans.to_parquet(os.path.join(stats_dir, "client_stats.parquet"), index=False)
     weekly_agg.to_parquet(os.path.join(stats_dir, "weekly_stats.parquet"), index=False)
@@ -404,8 +414,8 @@ def feature_engineering(**kwargs):
     ])
 
     # Cargar los datos de holdout no necesitamos recalcular train_df)
-    val_df   = pd.read_parquet(os.path.join(execution_date, "data_holdout/val_df.parquet"))
-    test_df  = pd.read_parquet(os.path.join(execution_date, "data_holdout/test_df.parquet"))
+    val_df   = pd.read_parquet(os.path.join(base_path, "data_holdout/val_df.parquet"))
+    test_df  = pd.read_parquet(os.path.join(base_path, "data_holdout/test_df.parquet"))
     # Separar características y etiquetas
     X_train = train_df.drop(columns=["label"])
     y_train = train_df["label"]
@@ -421,17 +431,17 @@ def feature_engineering(**kwargs):
     X_test_tr  = features_pipeline.transform(X_test)
 
    
-    os.makedirs(os.path.join(execution_date, "data_transformed"), exist_ok=True)
+    os.makedirs(os.path.join(base_path, "data_transformed"), exist_ok=True)
 
    
-    X_train_tr.to_parquet(os.path.join(execution_date, "data_transformed/X_train.parquet"))
-    y_train.to_frame().to_parquet(os.path.join(execution_date, "data_transformed/y_train.parquet"))
+    X_train_tr.to_parquet(os.path.join(base_path, "data_transformed/X_train.parquet"))
+    y_train.to_frame().to_parquet(os.path.join(base_path, "data_transformed/y_train.parquet"))
 
-    X_val_tr.to_parquet(os.path.join(execution_date, "data_transformed/X_val.parquet"))
-    y_val.to_frame().to_parquet(os.path.join(execution_date, "data_transformed/y_val.parquet"))
+    X_val_tr.to_parquet(os.path.join(base_path, "data_transformed/X_val.parquet"))
+    y_val.to_frame().to_parquet(os.path.join(base_path, "data_transformed/y_val.parquet"))
 
-    X_test_tr.to_parquet(os.path.join(execution_date, "data_transformed/X_test.parquet"))
-    y_test.to_frame().to_parquet(os.path.join(execution_date, "data_transformed/y_test.parquet"))
+    X_test_tr.to_parquet(os.path.join(base_path, "data_transformed/X_test.parquet"))
+    y_test.to_frame().to_parquet(os.path.join(base_path, "data_transformed/y_test.parquet"))
 
    
-    joblib.dump(features_pipeline, os.path.join(execution_date, "data_transformed/features_pipeline.pkl"))
+    joblib.dump(features_pipeline, os.path.join(base_path, "data_transformed/features_pipeline.pkl"))

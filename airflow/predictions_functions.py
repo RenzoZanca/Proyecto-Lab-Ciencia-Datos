@@ -14,6 +14,7 @@ import numpy as np
 from datetime import datetime, timedelta
 import itertools
 
+SHARED_DATA_DIR = "/shared-data"
 
 def create_robust_prediction_dataset(df_processed, next_week, max_week, client_stats, weekly_stats, product_stats):
     """
@@ -148,11 +149,12 @@ def run_prediction(**kwargs):
     Sin data leakage y robusta para producción.
     """
     execution_date = kwargs['ds']
+    base_path = os.path.join(SHARED_DATA_DIR, execution_date)
     
     print("Iniciando generación de predicciones...")
     
     # Cargar modelo exportado y artefactos
-    model_dir = os.path.join(execution_date, "model_export")
+    model_dir = os.path.join(base_path, "model_export")
     
     # Cargar modelo, pipeline y threshold
     model = joblib.load(os.path.join(model_dir, "model.bin"))
@@ -173,7 +175,7 @@ def run_prediction(**kwargs):
     print(f"   - Productos: {len(product_stats)}")
     
     # Cargar datos procesados originales para obtener información necesaria
-    df_processed = pd.read_parquet(os.path.join(execution_date, "data_processed/df_processed.parquet"))
+    df_processed = pd.read_parquet(os.path.join(base_path, "data_processed/df_processed.parquet"))
     
     # Obtener la semana más reciente en los datos
     max_week = df_processed['week'].max()
@@ -220,7 +222,7 @@ def run_prediction(**kwargs):
     print(f"   - Threshold usado: {threshold:.4f}")
     
     # Guardar resultados
-    predictions_dir = os.path.join(execution_date, "predictions")
+    predictions_dir = os.path.join(base_path, "predictions")
     os.makedirs(predictions_dir, exist_ok=True)
     
     prediction_df.to_parquet(
@@ -237,11 +239,12 @@ def get_products(**kwargs):
     Solo incluye las combinaciones cliente-producto con predicción positiva.
     """
     execution_date = kwargs['ds']
+    base_path = os.path.join(SHARED_DATA_DIR, execution_date)
     
     print("Generando archivo CSV con productos recomendados...")
     
     # Cargar predicciones
-    predictions_dir = os.path.join(execution_date, "predictions")
+    predictions_dir = os.path.join(base_path, "predictions")
     all_predictions = pd.read_parquet(os.path.join(predictions_dir, "all_predictions.parquet"))
     
     # Filtrar solo predicciones positivas

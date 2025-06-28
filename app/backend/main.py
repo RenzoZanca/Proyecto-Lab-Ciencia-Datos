@@ -7,8 +7,7 @@ import requests
 import time
 
 app = FastAPI()
-
-AIRFLOW_BASE_URL = "http://localhost:8080/api/v1"
+AIRFLOW_BASE_URL = "http://sodai-airflow:8080/api/v1"
 DAG_ID = "sodAI"
 
 def trigger_dag_api(dag_id: str, execution_date: str):
@@ -47,7 +46,7 @@ async def upload_and_predict(
 ):
     # Generar fecha de ejecución
     execution_date = datetime.now().strftime("%Y-%m-%d")
-    base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", execution_date))
+    base_path = f"/shared-data/{execution_date}"
     data_path = os.path.join(base_path, "data")
     os.makedirs(data_path, exist_ok=True)
 
@@ -62,15 +61,20 @@ async def upload_and_predict(
     # Disparar DAG usando API REST
     success, resp = trigger_dag_api(DAG_ID, execution_date)
     if not success:
-        return {"error": f"Failed to trigger DAG: {resp}"}
+       return {"error": f"Failed to trigger DAG: {resp}"}
 
     # Esperar a que termine el DAG
     state = wait_for_dag_status(DAG_ID, execution_date)
 
     if state == "success":
         prediction_file = os.path.join(base_path, "predictions", "recommended_products.csv")
+
         if os.path.exists(prediction_file):
-            return FileResponse(prediction_file, media_type='text/csv', filename="recommended_products.csv")
+            return FileResponse(
+                prediction_file,
+                media_type="text/csv",
+                filename="recommended_products.csv"
+            )
         else:
             return {"error": "DAG completed, but predictions file was not found."}
     elif state == "failed":

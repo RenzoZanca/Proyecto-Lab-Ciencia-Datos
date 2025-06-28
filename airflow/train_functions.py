@@ -24,12 +24,15 @@ import joblib
 import json
 import os
 
+SHARED_DATA_DIR = "/shared-data"  
+
 def detect_drift(**kwargs):
     """
     Detecta drift en los datos comparando distribuciones de features con referencias históricas.
     Maneja casos borde como primera ejecución.
     """
     execution_date = kwargs['ds']
+    base_path = os.path.join(SHARED_DATA_DIR, execution_date)
     
     print(" Detectando drift en los datos...")
     
@@ -37,7 +40,7 @@ def detect_drift(**kwargs):
         from scipy.stats import ks_2samp
         
         # Cargar datos actuales
-        current_data = pd.read_parquet(os.path.join(execution_date, "data_processed/df_processed.parquet"))
+        current_data = pd.read_parquet(os.path.join(base_path, "data_processed/df_processed.parquet"))
         
         # Buscar datos de referencia
         reference_data = None
@@ -67,7 +70,7 @@ def detect_drift(**kwargs):
         # 2. Si no hay modelo previo, usar datos históricos 
         if reference_data is None:
             try:
-                reference_data = pd.read_parquet(os.path.join(execution_date, "data_holdout/train_df.parquet"))
+                reference_data = pd.read_parquet(os.path.join(base_path, "data_holdout/train_df.parquet"))
                 reference_source = "baseline_historico"
                 print(f" Usando datos baseline históricos como referencia")
             except Exception as e:
@@ -171,7 +174,7 @@ def detect_drift(**kwargs):
         }
         
         # Guardar resultados completos
-        drift_dir = os.path.join(execution_date, "drift_detection")
+        drift_dir = os.path.join(base_path, "drift_detection")
         os.makedirs(drift_dir, exist_ok=True)
         
         complete_results = {
@@ -227,12 +230,13 @@ def decide_retraining(**kwargs):
     Retorna task_id para branching.
     """
     execution_date = kwargs['ds']
+    base_path = os.path.join(SHARED_DATA_DIR, execution_date)
     
     print(" Decidiendo estrategia de reentrenamiento...")
     print(f"   Execution date: {execution_date}")
     
     # Verificar si existe modelo previo
-    model_export_path = os.path.join(execution_date, "model_export")
+    model_export_path = os.path.join(base_path, "model_export")
     has_previous_model = False
     
     print(f"   Buscando modelos previos...")
@@ -272,7 +276,7 @@ def decide_retraining(**kwargs):
     # Caso 2: Leer resultado de drift detection
     print(f"   Leyendo resultado de drift detection...")
     try:
-        drift_file = os.path.join(execution_date, "drift_detection/drift_detected.txt")
+        drift_file = os.path.join(base_path, "drift_detection/drift_detected.txt")
         print(f"   Archivo drift: {drift_file}")
         
         if not os.path.exists(drift_file):
@@ -306,6 +310,7 @@ def copy_previous_model(**kwargs):
     Copia el modelo más reciente disponible cuando no hay drift.
     """
     execution_date = kwargs['ds']
+    base_path = os.path.join(SHARED_DATA_DIR, execution_date)
     
     print(" Copiando modelo previo (sin drift detectado)...")
     
@@ -322,7 +327,7 @@ def copy_previous_model(**kwargs):
             prev_export_dir = os.path.join(prev_date_str, "model_export")
             
             if os.path.exists(prev_export_dir):
-                current_export_dir = os.path.join(execution_date, "model_export")
+                current_export_dir = os.path.join(base_path, "model_export")
                 
                 # Crear directorio destino
                 os.makedirs(current_export_dir, exist_ok=True)
@@ -364,13 +369,13 @@ def copy_previous_model(**kwargs):
 def optimize_hyperparameters(**kwargs):
 
     execution_date = kwargs['ds']
-
+    base_path = os.path.join(SHARED_DATA_DIR, execution_date)
     # Load the data
-    X_train_tr = pd.read_parquet(os.path.join(execution_date, "data_transformed/X_train.parquet"))
-    y_train = pd.read_parquet(os.path.join(execution_date, "data_transformed/y_train.parquet"))["label"]
+    X_train_tr = pd.read_parquet(os.path.join(base_path, "data_transformed/X_train.parquet"))
+    y_train = pd.read_parquet(os.path.join(base_path, "data_transformed/y_train.parquet"))["label"]
 
-    X_val_tr = pd.read_parquet(os.path.join(execution_date, "data_transformed/X_val.parquet"))
-    y_val = pd.read_parquet(os.path.join(execution_date, "data_transformed/y_val.parquet"))["label"]
+    X_val_tr = pd.read_parquet(os.path.join(base_path, "data_transformed/X_val.parquet"))
+    y_val = pd.read_parquet(os.path.join(base_path, "data_transformed/y_val.parquet"))["label"]
 
     dtrain = xgb.DMatrix(X_train_tr, label=y_train)
     dval   = xgb.DMatrix(X_val_tr,   label=y_val)
@@ -463,26 +468,27 @@ def optimize_hyperparameters(**kwargs):
     print(f" Preprocessing fijo usado: SimpleImputer(median) + MinMaxScaler + OneHotEncoder")
 
     # guardar los resultados
-    os.makedirs(os.path.join(execution_date, "train"), exist_ok=True)
-    with open(os.path.join(execution_date, "train/optuna_params.json"), "w") as f:
+    os.makedirs(os.path.join(base_path, "train"), exist_ok=True)
+    with open(os.path.join(base_path, "train/optuna_params.json"), "w") as f:
         json.dump(params_final, f, indent=2)
 
 
 def train_model(**kwargs):
     
     execution_date = kwargs['ds']
+    base_path = os.path.join(SHARED_DATA_DIR, execution_date)
     # Cargar datos
-    X_train_tr = pd.read_parquet(os.path.join(execution_date, "data_transformed/X_train.parquet"))
-    y_train = pd.read_parquet(os.path.join(execution_date, "data_transformed/y_train.parquet"))["label"]
+    X_train_tr = pd.read_parquet(os.path.join(base_path, "data_transformed/X_train.parquet"))
+    y_train = pd.read_parquet(os.path.join(base_path, "data_transformed/y_train.parquet"))["label"]
 
-    X_test = pd.read_parquet(os.path.join(execution_date, "data_transformed/X_test.parquet"))
-    y_test = pd.read_parquet(os.path.join(execution_date, "data_transformed/y_test.parquet"))["label"]
+    X_test = pd.read_parquet(os.path.join(base_path, "data_transformed/X_test.parquet"))
+    y_test = pd.read_parquet(os.path.join(base_path, "data_transformed/y_test.parquet"))["label"]
 
     dtrain = xgb.DMatrix(X_train_tr, label=y_train)
     dtest = xgb.DMatrix(X_test)
 
     # Cargar parámetros de Optuna
-    with open(os.path.join(execution_date, "train/optuna_params.json"), "r") as f:
+    with open(os.path.join(base_path, "train/optuna_params.json"), "r") as f:
         parameters = json.load(f)
 
     # Entrenar booster final
@@ -506,14 +512,14 @@ def train_model(**kwargs):
     print(report)
 
     # Guardar modelo
-    joblib.dump(booster, os.path.join(execution_date, "train/xgb_model.bin"))
+    joblib.dump(booster, os.path.join(base_path, "train/xgb_model.bin"))
 
     # Guardar threshold
-    with open(os.path.join(execution_date, "train/threshold.txt"), "w") as f:
+    with open(os.path.join(base_path, "train/threshold.txt"), "w") as f:
         f.write(str(best_thr))
 
     # Guardar reporte
-    with open(os.path.join(execution_date, "train/classification_report.txt"), "w") as f:
+    with open(os.path.join(base_path, "train/classification_report.txt"), "w") as f:
         f.write(report)
 
 
@@ -522,16 +528,17 @@ def evaluate_model(**kwargs):
     Evalúa el modelo entrenado y registra métricas con MLflow (opcional).
     """
     execution_date = kwargs['ds']
+    base_path = os.path.join(SHARED_DATA_DIR, execution_date)
     
     # Cargar modelo entrenado
-    model = joblib.load(os.path.join(execution_date, "train/xgb_model.bin"))
+    model = joblib.load(os.path.join(base_path, "train/xgb_model.bin"))
     
     # Cargar datos de test
-    X_test = pd.read_parquet(os.path.join(execution_date, "data_transformed/X_test.parquet"))
-    y_test = pd.read_parquet(os.path.join(execution_date, "data_transformed/y_test.parquet"))["label"]
+    X_test = pd.read_parquet(os.path.join(base_path, "data_transformed/X_test.parquet"))
+    y_test = pd.read_parquet(os.path.join(base_path, "data_transformed/y_test.parquet"))["label"]
     
     # Cargar threshold
-    with open(os.path.join(execution_date, "train/threshold.txt"), "r") as f:
+    with open(os.path.join(base_path, "train/threshold.txt"), "r") as f:
         threshold = float(f.read().strip())
     
     # Predicciones
@@ -556,7 +563,7 @@ def evaluate_model(**kwargs):
         print(f"   - {metric}: {value:.4f}")
     
     # Guardar métricas
-    with open(os.path.join(execution_date, "train/metrics.json"), "w") as f:
+    with open(os.path.join(base_path, "train/metrics.json"), "w") as f:
         json.dump(metrics, f, indent=2)
     
     return metrics
@@ -567,38 +574,39 @@ def export_model(**kwargs):
     Exporta el modelo entrenado y sus artefactos.
     """
     execution_date = kwargs['ds']
+    base_path = os.path.join(SHARED_DATA_DIR, execution_date)
     
     # Crear directorio de modelos exportados
-    export_dir = os.path.join(execution_date, "model_export")
+    export_dir = os.path.join(base_path, "model_export")
     os.makedirs(export_dir, exist_ok=True)
     
     # Copiar modelo entrenado
     import shutil
     shutil.copy2(
-        os.path.join(execution_date, "train/xgb_model.bin"),
+        os.path.join(base_path, "train/xgb_model.bin"),
         os.path.join(export_dir, "model.bin")
     )
     
     # Copiar pipeline de features
     shutil.copy2(
-        os.path.join(execution_date, "data_transformed/features_pipeline.pkl"),
+        os.path.join(base_path, "data_transformed/features_pipeline.pkl"),
         os.path.join(export_dir, "features_pipeline.pkl")
     )
     
     # Copiar threshold
     shutil.copy2(
-        os.path.join(execution_date, "train/threshold.txt"),
+        os.path.join(base_path, "train/threshold.txt"),
         os.path.join(export_dir, "threshold.txt")
     )
     
     # Copiar métricas
     shutil.copy2(
-        os.path.join(execution_date, "train/metrics.json"),
+        os.path.join(base_path, "train/metrics.json"),
         os.path.join(export_dir, "metrics.json")
     )
     
     # ✅ NUEVO: Copiar estadísticas de features para predicción
-    stats_source = os.path.join(execution_date, "feature_stats")
+    stats_source = os.path.join(base_path, "feature_stats")
     stats_dest = os.path.join(export_dir, "feature_stats")
     
     if os.path.exists(stats_source):
