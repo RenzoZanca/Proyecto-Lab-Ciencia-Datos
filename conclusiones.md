@@ -1,7 +1,7 @@
-En esta sección deben reflexionar sobre los aprendizajes, desafíos y oportunidades del enfoque `MLOps` aplicado. Sus reflexiones deben ser escritas en un archivo `conclusiones.md`
+# Conclusiones:
 
-Algunas ideas que pueden abordar:
-- ¿Cómo mejoró el desarrollo del proyecto al utilizar herramientas de *tracking* y despliegue?
-- ¿Qué aspectos del despliegue con `Gradio/FastAPI` fueron más desafiantes o interesantes?
-- ¿Cómo aporta `Airflow` a la robustez y escalabilidad del pipeline?
-- ¿Qué se podría mejorar en una versión futura del flujo? ¿Qué partes automatizarían más, qué monitorearían o qué métricas agregarían?
+A pesar de lo desafiante, el adentrarse en la disciplina de MLOPs a sido muy beneficioso para complementar nuestro conocimiento como data scientist. Entrenar modelos y obtener predicciones en jupyter notebook es cómodo para un programador, pero no resulta algo adecuado para un usuario común y corriente. Es por esto que surge la necesidad de poder montar los modelos de machine learning y lograr que sea usable para cualquier usuario.
+
+Profundizando sobre los aspectos más técnicos, el despligue del modelo fue muy beneficioso para el proyecto por que lo convirtió en una aplicación que permite generar predicciones con tan solo subir unos cuantos archivos. Airflow le dió mucha robustez al proyecto, pues permitió encasillar en un único flujo desde el preprocesamiento, entrenar y llegar a un output de predicciones. En la entrega pasada todo esto requeria de varias ejecuciones de funciones y celdas, pero Airflow logra juntar todo para una ejecución más sencilla. Hablando sobre el despligue de la aplicación, crear el frontend no presentó tantas complicaciones, sin embargo, para el backend resultó más complejo coordinar la ejecución del pipeline de airflow. Por último, lo más complejo resultó al coordinar todos estos distintos componentes en una red de Docker, la cual debia ser capaz de hacer que todos estos componentes se comuniquen y funcionen de manera efectiva.
+
+Para una versión futura se podria mejorar utilizando mlflow para poder trackear de forma mucho más sencilla y robusta el entrenamiento de los distintos modelos. Además se podrian sumar las secciones de bonus como recomendaciones y chatbots, para así complementar con features para el usuario mientras espera la ejecución del pipeline en el frontend.
