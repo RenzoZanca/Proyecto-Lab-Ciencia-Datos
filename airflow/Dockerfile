@@ -5,6 +5,7 @@ ENV AIRFLOW_HOME=/app/airflow
 ENV AIRFLOW__CORE__DAGS_FOLDER=/app/airflow/dags
 ENV AIRFLOW__CORE__LOAD_EXAMPLES=False
 ENV AIRFLOW__CORE__EXECUTOR=SequentialExecutor
+ENV AIRFLOW__API__AUTH_BACKEND=airflow.api.auth.backend.default
 
 WORKDIR ${AIRFLOW_HOME}
 
@@ -14,10 +15,7 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Directorio de trabajo
-WORKDIR /app/airflow
-
-# Copiar requirements
+# Copiar requirements e instalar
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -32,17 +30,8 @@ COPY dag.py "${AIRFLOW_HOME}/dags/"
 COPY data_functions.py "${AIRFLOW_HOME}/dags/"
 COPY train_functions.py "${AIRFLOW_HOME}/dags/"
 COPY predictions_functions.py "${AIRFLOW_HOME}/dags/"
-
-# Copiar plugins (estructura familiar)
 COPY plugins/ "${AIRFLOW_HOME}/plugins/"
 
-# Crear directorio para datos de demostración
-RUN mkdir -p "${AIRFLOW_HOME}/2024-12-01/data"
 
-# El directorio de datos se montará vía volumen en docker-compose
-
-# Exponer puerto de la UI
 EXPOSE 8080
-
-# Comando para iniciar Airflow
-CMD ["airflow", "standalone"] 
+CMD ["airflow", "standalone"]

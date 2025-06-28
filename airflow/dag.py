@@ -44,9 +44,9 @@ default_args = {
 with DAG(
     dag_id='sodAI',
     default_args=default_args,
-    schedule='@weekly',  # Ejecutar semanalmente
-    catchup=True,        # HABILITADO para simular comportamiento productivo
-    max_active_runs=1,   # Evita ejecuciones paralelas que saturen recursos
+    schedule=None,       # ejecución manual (antes era @weekly)
+    catchup=False,       # evita ejecución retroactiva (antes era True)
+    max_active_runs=1,
     tags=['sodAI']
 ) as dag:
 

@@ -62,7 +62,8 @@ async def upload_and_predict(
     success, resp = trigger_dag_api(DAG_ID, execution_date)
     if not success:
        return {"error": f"Failed to trigger DAG: {resp}"}
-
+    
+    print(f"DAG {DAG_ID} triggered successfully for execution date {execution_date}.")
     # Esperar a que termine el DAG
     state = wait_for_dag_status(DAG_ID, execution_date)
 

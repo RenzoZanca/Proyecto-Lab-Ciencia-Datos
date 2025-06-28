@@ -6,12 +6,10 @@ services:
     container_name: sodai-airflow
     ports:
       - "8080:8080"
-    # Las variables de entorno están configuradas en el Dockerfile
     networks:
       - sodai-network
     volumes:
       - sodai-shared-data:/shared-data
-      - ../2024-12-01:/app/airflow/2024-12-01
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s

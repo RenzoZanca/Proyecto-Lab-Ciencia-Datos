@@ -9,7 +9,9 @@ def subir_y_predecir(clientes, productos, transacciones):
         "productos": productos,
         "transacciones": transacciones
     }
+    print("Haciendo POST a http://backend:8000/upload_and_predict")
     response = requests.post("http://backend:8000/upload_and_predict", files=files)
+    print(f"Respuesta del backend: {response.status_code} - {response.text[:100]}...")
     if response.status_code == 200 and response.headers.get("content-type").startswith("text/csv"):
         csv_text = response.text
         df = pd.read_csv(StringIO(csv_text))
