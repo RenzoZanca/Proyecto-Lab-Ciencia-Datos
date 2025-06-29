@@ -23,6 +23,7 @@ import pandas as pd
 import joblib
 import json
 import os
+import psutil
 
 SHARED_DATA_DIR = "/shared-data"  
 
@@ -367,61 +368,140 @@ def copy_previous_model(**kwargs):
 
 # TO-DO: agregar mlflow para trackear los resultados
 def optimize_hyperparameters(**kwargs):
+    import gc
+    import psutil
+    import os
 
     execution_date = kwargs['ds']
     base_path = os.path.join(SHARED_DATA_DIR, execution_date)
-    # Load the data
+    
+    print("🔧 Iniciando optimización de hiperparámetros...")
+    
+    # Monitorear memoria inicial
+    process = psutil.Process(os.getpid())
+    initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+    print(f"   Memoria inicial: {initial_memory:.1f} MB")
+    
+    # Load the data con manejo de memoria
+    print("   Cargando datasets...")
     X_train_tr = pd.read_parquet(os.path.join(base_path, "data_transformed/X_train.parquet"))
     y_train = pd.read_parquet(os.path.join(base_path, "data_transformed/y_train.parquet"))["label"]
 
     X_val_tr = pd.read_parquet(os.path.join(base_path, "data_transformed/X_val.parquet"))
     y_val = pd.read_parquet(os.path.join(base_path, "data_transformed/y_val.parquet"))["label"]
 
+    # Crear DMatrix una sola vez fuera del objective
+    print("   Creando DMatrix...")
     dtrain = xgb.DMatrix(X_train_tr, label=y_train)
-    dval   = xgb.DMatrix(X_val_tr,   label=y_val)
+    dval = xgb.DMatrix(X_val_tr, label=y_val)
+    
+    # Liberar DataFrames originales
+    del X_train_tr, X_val_tr, y_train
+    gc.collect()
+    
+    print(f"   Dataset sizes: train={dtrain.num_row()}, val={dval.num_row()}")
+    
+    # Contador de trials para control estricto
+    trial_counter = [0]  # Usar lista para mutabilidad
+    max_trials = 75  # Reducir para evitar problemas de memoria
 
     # Definir función objetivo para Optuna
     def objective(trial):
-        param = {
-            "learning_rate":    trial.suggest_loguniform("learning_rate",    0.10, 0.25),
-            "max_depth":        trial.suggest_int("max_depth",               8,   16),
-            "subsample":        trial.suggest_float("subsample",             0.65, 1.0),
-            "colsample_bytree": trial.suggest_float("colsample_bytree",      0.6,  1.0),
-            "gamma":            trial.suggest_float("gamma",                 0.0,  2.0),
-            "min_child_weight": trial.suggest_int("min_child_weight",        1,   10),
-            "reg_alpha":        trial.suggest_loguniform("reg_alpha",       0.1,   5.0),
-            "reg_lambda":       trial.suggest_loguniform("reg_lambda",      0.1,   5.0),
-            "tree_method":      "hist",
-            "verbosity":        0,
-            "eval_metric":      "logloss",
-            "objective":        "binary:logistic"
-        }
-        n_rounds = trial.suggest_int("n_estimators", 50, 300)
+        try:
+            trial_counter[0] += 1
+            current_trial = trial_counter[0]
+            
+            # Verificar límite estricto de trials
+            if current_trial > max_trials:
+                print(f"   Trial {current_trial}: LÍMITE ALCANZADO, saltando")
+                raise optuna.TrialPruned()
+            
+            # Monitorear memoria cada 10 trials
+            if current_trial % 10 == 0:
+                current_memory = process.memory_info().rss / 1024 / 1024  # MB
+                print(f"   Trial {current_trial}: Memoria actual: {current_memory:.1f} MB")
+                
+                # Si la memoria supera 1.5GB, detener
+                if current_memory > 1500:
+                    print(f"   Trial {current_trial}: LÍMITE DE MEMORIA ALCANZADO")
+                    raise optuna.TrialPruned()
 
-        pruning_callback = XGBoostPruningCallback(trial, "validation-logloss")
+            param = {
+                "learning_rate":    trial.suggest_float("learning_rate", 0.10, 0.20),  # Rango más pequeño
+                "max_depth":        trial.suggest_int("max_depth", 8, 14),  # Reducir profundidad máxima
+                "subsample":        trial.suggest_float("subsample", 0.75, 1.0),
+                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.7, 1.0),
+                "gamma":            trial.suggest_float("gamma", 0.0, 1.5),
+                "min_child_weight": trial.suggest_int("min_child_weight", 1, 6),
+                "reg_alpha":        trial.suggest_float("reg_alpha", 0.1, 3.0, log=True),
+                "reg_lambda":       trial.suggest_float("reg_lambda", 0.1, 4.0, log=True),
+                "tree_method":      "hist",
+                "verbosity":        0,
+                "eval_metric":      "logloss",
+                "objective":        "binary:logistic",
+                "nthread":          2  # Limitar threads para reducir uso de memoria
+            }
+            n_rounds = trial.suggest_int("n_estimators", 50, 250)  # Reducir máximo
 
-        booster = xgb.train(
-            params=param,
-            dtrain=dval,
-            num_boost_round=n_rounds,
-            evals=[(dval, "validation")],
-            callbacks=[
-                pruning_callback,
-                xgb.callback.EarlyStopping(rounds=30)
-            ],
-            verbose_eval=False,
-        )
+            pruning_callback = XGBoostPruningCallback(trial, "validation-logloss")
 
-        preds = (booster.predict(dval) > 0.5).astype(int)
-        return f1_score(y_val, preds, pos_label=1)
+            booster = xgb.train(
+                params=param,
+                dtrain=dtrain,
+                num_boost_round=n_rounds,
+                evals=[(dval, "validation")],
+                callbacks=[
+                    pruning_callback,
+                    xgb.callback.EarlyStopping(rounds=20)  # Reducir early stopping
+                ],
+                verbose_eval=False,
+            )
 
-    # Ejecutar estudio Optuna
+            preds = (booster.predict(dval) > 0.5).astype(int)
+            f1 = f1_score(y_val, preds, pos_label=1)
+            
+            # Limpiar memoria agresivamente después de cada trial
+            del booster, preds
+            gc.collect()
+            
+            if current_trial % 5 == 0:
+                print(f"   Trial {current_trial}: F1 = {f1:.4f}")
+            
+            return f1
+            
+        except optuna.TrialPruned:
+            # Limpiar memoria en caso de pruning
+            gc.collect()
+            raise
+        except Exception as e:
+            print(f"Error en trial {trial_counter[0]}: {e}")
+            gc.collect()
+            return 0.0
+
+    # Ejecutar estudio Optuna con configuración más conservadora
     study = optuna.create_study(
         direction="maximize",
-        sampler=TPESampler(seed=42),
-        pruner=MedianPruner(n_startup_trials=5)
+        sampler=TPESampler(seed=42, n_startup_trials=10),  # Más startup trials
+        pruner=MedianPruner(n_startup_trials=10, n_warmup_steps=5)  # Pruning más agresivo
     )
-    study.optimize(objective, timeout=300)
+    
+    # Optimizar con límites estrictos - SIN TIMEOUT para control preciso
+    print(f"   Ejecutando optimización (máximo {max_trials} trials)...")
+    print("   Configuración conservadora para evitar problemas de memoria")
+    
+    try:
+        study.optimize(objective, n_trials=max_trials)  # Solo n_trials, sin timeout
+        print(f"   Optimización completada: {len(study.trials)} trials ejecutados")
+    except KeyboardInterrupt:
+        print(f"   Optimización interrumpida: {len(study.trials)} trials completados")
+    except Exception as e:
+        print(f"   Error en optimización: {e}")
+        if len(study.trials) == 0:
+            raise Exception("No se completó ningún trial exitosamente")
+
+    # Verificar que tenemos resultados
+    if len(study.trials) == 0:
+        raise Exception("No se completaron trials exitosamente")
 
     # Resultados
     best = study.best_trial
@@ -430,33 +510,45 @@ def optimize_hyperparameters(**kwargs):
         "objective": "binary:logistic",
         "eval_metric": "logloss",
         "verbosity": 0,
-        "tree_method": "hist"
+        "tree_method": "hist",
+        "nthread": 2
     })
     n_rounds_final = best.params["n_estimators"]
 
+    print(f"   Mejor trial: {best.number} con F1 = {best.value:.4f}")
+
     # Búsqueda de umbral óptimo en validación
+    print("   Entrenando modelo final para búsqueda de threshold...")
     booster = xgb.train(
         params=params_final,
         dtrain=dtrain,
         num_boost_round=n_rounds_final,
         evals=[(dval, "validation")],
-        early_stopping_rounds=30,
+        early_stopping_rounds=20,
         verbose_eval=False
     )
 
     probs_val = booster.predict(dval)
     best_thr, best_f1 = 0.0, 0.0
-    for thr in np.linspace(0.1, 0.9, 81):
+    
+    print("   Optimizando threshold...")
+    for thr in np.linspace(0.1, 0.9, 41):  # Reducir búsqueda de threshold
         preds_thr = (probs_val > thr).astype(int)
         f1 = f1_score(y_val, preds_thr, pos_label=1)
         if f1 > best_f1:
             best_f1, best_thr = f1, thr
 
+    # Limpiar memoria final
+    del booster, dtrain, dval, probs_val
+    gc.collect()
+
     # Agregar threshold óptimo a los parámetros
     params_final["threshold"] = best_thr
     params_final["best_f1_validation"] = best_f1
+    params_final["trials_completed"] = len(study.trials)
     
-    print(f"Hiperparámetros óptimos encontrados:")
+    print(f"✅ Hiperparámetros óptimos encontrados:")
+    print(f"   - Trials completados: {len(study.trials)}")
     print(f"   - Threshold óptimo: {best_thr:.4f}")
     print(f"   - F1-Score en validación: {best_f1:.4f}")
     print(f"   - N estimators: {n_rounds_final}")
@@ -464,8 +556,12 @@ def optimize_hyperparameters(**kwargs):
     print(f"   - Max depth: {params_final['max_depth']}")
     print(f"   - Subsample: {params_final['subsample']:.4f}")
     
+    # Memoria final
+    final_memory = process.memory_info().rss / 1024 / 1024  # MB
+    print(f"   - Memoria final: {final_memory:.1f} MB")
+    print(f"   - Incremento: {final_memory - initial_memory:.1f} MB")
   
-    print(f" Preprocessing fijo usado: SimpleImputer(median) + MinMaxScaler + OneHotEncoder")
+    print(f"📋 Preprocessing fijo usado: SimpleImputer(median) + MinMaxScaler + OneHotEncoder")
 
     # guardar los resultados
     os.makedirs(os.path.join(base_path, "train"), exist_ok=True)
@@ -474,24 +570,46 @@ def optimize_hyperparameters(**kwargs):
 
 
 def train_model(**kwargs):
+    import gc
+    import psutil
     
     execution_date = kwargs['ds']
     base_path = os.path.join(SHARED_DATA_DIR, execution_date)
+    
+    print("🏋️‍♂️ Iniciando entrenamiento del modelo final...")
+    
+    # Monitorear memoria inicial
+    process = psutil.Process(os.getpid())
+    initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+    print(f"   Memoria inicial: {initial_memory:.1f} MB")
+    
     # Cargar datos
+    print("   Cargando datos de entrenamiento y test...")
     X_train_tr = pd.read_parquet(os.path.join(base_path, "data_transformed/X_train.parquet"))
     y_train = pd.read_parquet(os.path.join(base_path, "data_transformed/y_train.parquet"))["label"]
 
     X_test = pd.read_parquet(os.path.join(base_path, "data_transformed/X_test.parquet"))
     y_test = pd.read_parquet(os.path.join(base_path, "data_transformed/y_test.parquet"))["label"]
 
+    print(f"   Tamaños: train={len(X_train_tr)}, test={len(X_test)}")
+
     dtrain = xgb.DMatrix(X_train_tr, label=y_train)
     dtest = xgb.DMatrix(X_test)
+    
+    # Liberar DataFrames originales para ahorrar memoria
+    del X_train_tr, y_train
+    gc.collect()
 
     # Cargar parámetros de Optuna
     with open(os.path.join(base_path, "train/optuna_params.json"), "r") as f:
         parameters = json.load(f)
+    
+    print(f"   Parámetros cargados: {parameters.get('trials_completed', 'N/A')} trials completados")
+    print(f"   Learning rate: {parameters.get('learning_rate', 'N/A')}")
+    print(f"   N estimators: {parameters.get('n_estimators', 'N/A')}")
 
     # Entrenar booster final
+    print("   Entrenando modelo final...")
     booster = xgb.train(
         params=parameters,
         dtrain=dtrain,
@@ -502,16 +620,22 @@ def train_model(**kwargs):
     )
 
     # Predicciones y evaluación en test
+    print("   Realizando predicciones en test...")
     probs_test = booster.predict(dtest)
     best_thr = parameters.get("threshold", 0.5)
     preds_test = (probs_test > best_thr).astype(int)
 
     report = classification_report(y_test, preds_test)
 
-    print("→ Reporte final en TEST:")
+    print("✅ Reporte final en TEST:")
     print(report)
 
+    # Memoria antes de guardar
+    current_memory = process.memory_info().rss / 1024 / 1024  # MB
+    print(f"   Memoria antes de guardar: {current_memory:.1f} MB")
+
     # Guardar modelo
+    print("   Guardando modelo entrenado...")
     joblib.dump(booster, os.path.join(base_path, "train/xgb_model.bin"))
 
     # Guardar threshold
@@ -521,6 +645,16 @@ def train_model(**kwargs):
     # Guardar reporte
     with open(os.path.join(base_path, "train/classification_report.txt"), "w") as f:
         f.write(report)
+    
+    # Limpiar memoria final
+    del booster, dtrain, dtest, X_test, y_test, probs_test, preds_test
+    gc.collect()
+    
+    # Memoria final
+    final_memory = process.memory_info().rss / 1024 / 1024  # MB
+    print(f"   Memoria final: {final_memory:.1f} MB")
+    print(f"   Incremento total: {final_memory - initial_memory:.1f} MB")
+    print(f"🎯 Modelo entrenado exitosamente con threshold: {best_thr:.4f}")
 
 
 def evaluate_model(**kwargs):

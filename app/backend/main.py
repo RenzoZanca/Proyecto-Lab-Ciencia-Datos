@@ -232,110 +232,110 @@ def update_job_progress(job_id: str):
                     time.sleep(10)
                     continue
                 
-                dag_state = dag_data.get("state")
-                
-                # Get task details
-                tasks = get_dag_tasks_status(DAG_ID, execution_date)
-                
-                # Update progress based on completed tasks
-                completed_tasks = [t for t in tasks if t.get("state") == "success"]
-                failed_tasks = [t for t in tasks if t.get("state") == "failed"]
-                running_tasks = [t for t in tasks if t.get("state") == "running"]
-                
-                # Check for failed tasks FIRST, even if DAG state is not failed
-                if failed_tasks:
-                    job["status"] = "failed"
-                    job["current_task"] = "Error en el procesamiento"
+                    dag_state = dag_data.get("state")
                     
-                    # Get error details from failed tasks
-                    failed_task = failed_tasks[0]
-                    task_id = failed_task.get('task_id')
-                    job["error"] = f"Error en tarea: {task_id}"
-                    job["current_task"] = f"❌ Error en: {task_id}"
+                    # Get task details
+                    tasks = get_dag_tasks_status(DAG_ID, execution_date)
                     
-                    # Get error logs
-                    try:
-                        error_logs = get_task_logs(DAG_ID, execution_date, task_id, failed_task.get('try_number', 1))
-                        if error_logs and len(error_logs) > 100:
-                            # Extract error message from logs
-                            if '"ArrowInvalid"' in error_logs and 'Parquet magic bytes' in error_logs:
-                                job["error"] = "❌ Archivo Parquet corrupto o inválido"
-                                job["logs"].append("❌ ERROR: Los archivos parquet están corruptos o no son válidos")
-                                job["logs"].append("💡 TIP: Verifica que los archivos sean parquet válidos")
-                            elif '"FileNotFoundError"' in error_logs:
-                                job["error"] = "❌ Archivos no encontrados"
-                                job["logs"].append("❌ ERROR: No se encontraron los archivos de datos")
-                            else:
-                                # Show last part of error log
-                                job["logs"].append(f"❌ ERROR: {error_logs[-300:]}")
-                    except Exception as e:
-                        job["logs"].append(f"❌ Error obteniendo logs: {str(e)}")
-                    break
+                    # Update progress based on completed tasks
+                    completed_tasks = [t for t in tasks if t.get("state") == "success"]
+                    failed_tasks = [t for t in tasks if t.get("state") == "failed"]
+                    running_tasks = [t for t in tasks if t.get("state") == "running"]
                     
-                # Calculate progress
-                elif dag_state == "success":
-                    job["progress"] = 100
-                    job["status"] = "completed"
-                    job["current_task"] = "¡Completado!"
-                    
-                    # Try to set the result file path
-                    prediction_file = f"/shared-data/{execution_date}/predictions/recommended_products.csv"
-                    if os.path.exists(prediction_file):
-                        job["result_file"] = prediction_file
+                    # Check for failed tasks FIRST, even if DAG state is not failed
+                    if failed_tasks:
+                        job["status"] = "failed"
+                        job["current_task"] = "Error en el procesamiento"
+                        
+                        # Get error details from failed tasks
+                        failed_task = failed_tasks[0]
+                        task_id = failed_task.get('task_id')
+                        job["error"] = f"Error en tarea: {task_id}"
+                        job["current_task"] = f"❌ Error en: {task_id}"
+                        
+                        # Get error logs
+                        try:
+                            error_logs = get_task_logs(DAG_ID, execution_date, task_id, failed_task.get('try_number', 1))
+                            if error_logs and len(error_logs) > 100:
+                                # Extract error message from logs
+                                if '"ArrowInvalid"' in error_logs and 'Parquet magic bytes' in error_logs:
+                                    job["error"] = "❌ Archivo Parquet corrupto o inválido"
+                                    job["logs"].append("❌ ERROR: Los archivos parquet están corruptos o no son válidos")
+                                    job["logs"].append("💡 TIP: Verifica que los archivos sean parquet válidos")
+                                elif '"FileNotFoundError"' in error_logs:
+                                    job["error"] = "❌ Archivos no encontrados"
+                                    job["logs"].append("❌ ERROR: No se encontraron los archivos de datos")
+                                else:
+                                    # Show last part of error log
+                                    job["logs"].append(f"❌ ERROR: {error_logs[-300:]}")
+                        except Exception as e:
+                            job["logs"].append(f"❌ Error obteniendo logs: {str(e)}")
+                        break
+                        
+                    # Calculate progress
+                    elif dag_state == "success":
+                        job["progress"] = 100
+                        job["status"] = "completed"
+                        job["current_task"] = "¡Completado!"
+                        
+                        # Try to set the result file path
+                        prediction_file = f"/shared-data/{execution_date}/predictions/recommended_products.csv"
+                        if os.path.exists(prediction_file):
+                            job["result_file"] = prediction_file
                         job["has_result"] = True
                         job["logs"].append("✅ ¡Predicciones generadas exitosamente!")
                         job["logs"].append(f"📊 Archivo de resultados: recommended_products.csv")
-                    break
-                    
-                elif dag_state in ["failed", "error"]:
-                    job["status"] = "failed"
-                    job["current_task"] = "Error en el procesamiento"
-                    job["error"] = f"DAG falló con estado: {dag_state}"
-                    break
-                    
-                else:
-                    # Still running - use detailed progress tracking
-                    skipped_tasks = [t for t in tasks if t.get("state") == "skipped"]
-                    
-                    # Get current running task with detailed info
-                    if running_tasks:
-                        current_task = running_tasks[0]
-                        current_task_id = current_task.get('task_id', 'unknown')
+                        break
                         
-                        # Get display name for current task
-                        display_name = get_task_display_name(current_task_id)
-                        job["current_task"] = display_name
+                    elif dag_state in ["failed", "error"]:
+                        job["status"] = "failed"
+                        job["current_task"] = "Error en el procesamiento"
+                        job["error"] = f"DAG falló con estado: {dag_state}"
+                        break
                         
-                        # Add progress log for task transitions
+                    else:
+                        # Still running - use detailed progress tracking
+                        skipped_tasks = [t for t in tasks if t.get("state") == "skipped"]
+                        
+                        # Get current running task with detailed info
+                        if running_tasks:
+                            current_task = running_tasks[0]
+                            current_task_id = current_task.get('task_id', 'unknown')
+                            
+                            # Get display name for current task
+                            display_name = get_task_display_name(current_task_id)
+                            job["current_task"] = display_name
+                            
+                            # Add progress log for task transitions
                         if job.get('_last_task_id') and job.get('_last_task_id') != current_task_id:
-                            job["logs"].append(f"▶️ Iniciando: {display_name}")
+                                job["logs"].append(f"▶️ Iniciando: {display_name}")
                         job['_last_task_id'] = current_task_id
+                            
+                        elif completed_tasks:
+                            # Show last completed task if nothing is running
+                            last_completed = completed_tasks[-1]
+                            last_task_id = last_completed.get('task_id', 'unknown')
+                            display_name = get_task_display_name(last_task_id)
+                            job["current_task"] = f"✅ Completado: {display_name}"
                         
-                    elif completed_tasks:
-                        # Show last completed task if nothing is running
-                        last_completed = completed_tasks[-1]
-                        last_task_id = last_completed.get('task_id', 'unknown')
-                        display_name = get_task_display_name(last_task_id)
-                        job["current_task"] = f"✅ Completado: {display_name}"
-                    
-                    # Calculate progress using new weighted system
-                    progress = calculate_progress(completed_tasks, running_tasks, skipped_tasks)
-                    job["progress"] = max(job.get("progress", 0), progress)  # Never decrease progress
-                    
-                    # Enhanced time estimation
-                    elapsed = time.time() - start_time
-                    if job["progress"] > 5:  # Only estimate after some progress
-                        estimated_total = (elapsed / job["progress"]) * 100
-                        remaining = max(0, estimated_total - elapsed)
-                        job["estimated_remaining"] = int(remaining)
-                    
-                    # Add detailed task completion logs
-                    for task in completed_tasks:
-                        task_id = task.get('task_id')
-                        if task_id and not job.get(f"_logged_{task_id}", False):
-                            display_name = get_task_display_name(task_id)
-                            job["logs"].append(f"✅ {display_name}")
-                            job[f"_logged_{task_id}"] = True
+                        # Calculate progress using new weighted system
+                        progress = calculate_progress(completed_tasks, running_tasks, skipped_tasks)
+                        job["progress"] = max(job.get("progress", 0), progress)  # Never decrease progress
+                        
+                        # Enhanced time estimation
+                        elapsed = time.time() - start_time
+                        if job["progress"] > 5:  # Only estimate after some progress
+                            estimated_total = (elapsed / job["progress"]) * 100
+                            remaining = max(0, estimated_total - elapsed)
+                            job["estimated_remaining"] = int(remaining)
+                        
+                        # Add detailed task completion logs
+                        for task in completed_tasks:
+                            task_id = task.get('task_id')
+                            if task_id and not job.get(f"_logged_{task_id}", False):
+                                display_name = get_task_display_name(task_id)
+                                job["logs"].append(f"✅ {display_name}")
+                                job[f"_logged_{task_id}"] = True
                         
             except Exception as e:
                 job["logs"].append(f"Error monitoring progress: {str(e)}")

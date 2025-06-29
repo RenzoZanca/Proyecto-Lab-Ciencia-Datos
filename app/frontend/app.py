@@ -237,7 +237,7 @@ def cargar_y_mostrar_resultados(download_url):
         response = requests.get(download_url)
         if response.status_code == 200:
             # Parse CSV
-            df = pd.read_csv(StringIO(response.text))
+                df = pd.read_csv(StringIO(response.text))
             
             if len(df) == 0:
                 return None, "❌ No se generaron predicciones"

@@ -3,6 +3,27 @@
 echo "🚀 Starting SodAI Complete System..."
 echo "======================================"
 
+# Step 0: Setup Docker network and volume
+echo "🔧 Step 0: Setting up Docker infrastructure..."
+
+# Check and create network if it doesn't exist
+if ! docker network ls | grep -q "sodai-network"; then
+    echo "   Creating Docker network 'sodai-network'..."
+    docker network create sodai-network
+    echo "   ✅ Network created successfully"
+else
+    echo "   ✅ Network 'sodai-network' already exists"
+fi
+
+# Check and create volume if it doesn't exist
+if ! docker volume ls | grep -q "sodai-shared-data"; then
+    echo "   Creating Docker volume 'sodai-shared-data'..."
+    docker volume create sodai-shared-data
+    echo "   ✅ Volume created successfully"
+else
+    echo "   ✅ Volume 'sodai-shared-data' already exists"
+fi
+
 # Step 1: Start Airflow
 echo "📊 Step 1: Starting Airflow..."
 cd airflow

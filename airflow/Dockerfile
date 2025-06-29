@@ -4,8 +4,8 @@ FROM python:3.10-slim
 ENV AIRFLOW_HOME=/app/airflow
 ENV AIRFLOW__CORE__DAGS_FOLDER=/app/airflow/dags
 ENV AIRFLOW__CORE__LOAD_EXAMPLES=False
-ENV AIRFLOW__CORE__EXECUTOR=SequentialExecutor
-ENV AIRFLOW__API__AUTH_BACKEND=airflow.api.auth.backend.default
+ENV AIRFLOW__CORE__EXECUTOR=LocalExecutor
+ENV AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS=True
 
 WORKDIR ${AIRFLOW_HOME}
 
@@ -34,4 +34,4 @@ COPY plugins/ "${AIRFLOW_HOME}/plugins/"
 
 
 EXPOSE 8080
-CMD ["airflow", "standalone"]
+CMD ["airflow", "standalone"] 

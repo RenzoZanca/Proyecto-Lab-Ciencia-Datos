@@ -24,6 +24,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 import os
 import joblib
+import gc  # Add garbage collection for memory management
 
 SHARED_DATA_DIR = "/shared-data"
 
@@ -111,11 +112,19 @@ def process_transactions(transactions):
 
 # Crea combinaciones semanales de productos, clientes y semanas
 def create_weekly_combinations(transactions):
-    product_ids = transactions['product_id'].unique()
-    customer_ids = transactions['customer_id'].unique()
+    # Instead of creating ALL possible combinations (which creates ~79M rows),
+    # only create combinations for customer-product pairs that actually exist
+    customer_products = transactions[['customer_id', 'product_id']].drop_duplicates()
     weeks = transactions['week'].unique()
-    return pd.DataFrame(list(itertools.product(product_ids, customer_ids, weeks)),
-                        columns=['product_id', 'customer_id', 'week'])
+    
+    # Create combinations only for existing customer-product pairs
+    combinations = []
+    for week in weeks:
+        week_combinations = customer_products.copy()
+        week_combinations['week'] = week
+        combinations.append(week_combinations)
+    
+    return pd.concat(combinations, ignore_index=True)
 
 # Enriquecer las combinaciones con transacciones
 # para obtener etiquetas y características adicionales
@@ -175,18 +184,59 @@ def process_data(**kwargs):
     execution_date = kwargs['ds']
     base_path = os.path.join(SHARED_DATA_DIR, execution_date)
 
+    print("🔄 Iniciando procesamiento de datos...")
+    
+    # Get and process data step by step to manage memory
     data = get_data(**kwargs)
+    print(f"✅ Datos cargados. Procesando clientes...")
+    
     clients = process_clients(data['clientes'])
+    print(f"✅ {len(clients)} clientes procesados. Liberando memoria...")
+    del data['clientes']
+    gc.collect()
+    
+    print(f"🔄 Procesando productos...")
     products = process_products(data['productos'])
+    print(f"✅ {len(products)} productos procesados. Liberando memoria...")
+    del data['productos']
+    gc.collect()
+    
+    print(f"🔄 Procesando transacciones...")
     transactions = process_transactions(data['transacciones'])
+    print(f"✅ {len(transactions)} transacciones procesadas. Liberando memoria...")
+    del data['transacciones'], data
+    gc.collect()
 
+    print(f"🔄 Creando combinaciones semanales...")
     combinations = create_weekly_combinations(transactions)
+    print(f"✅ {len(combinations):,} combinaciones creadas (optimizado). Enriqueciendo...")
+    
     df_combined = enrich_combinations_with_transactions(combinations, transactions)
+    print(f"✅ Combinaciones enriquecidas. Liberando memoria...")
+    del combinations
+    gc.collect()
+    
+    print(f"🔄 Combinando todos los datos...")
     tx = merge_all_data(df_combined, clients, products)
+    print(f"✅ Datos combinados. Liberando memoria...")
+    del df_combined, clients, products
+    gc.collect()
+    
+    print(f"🔄 Finalizando dataset...")
     df_processed = finalize_dataset(tx)
+    print(f"✅ Dataset final: {len(df_processed):,} registros")
+    del tx
+    gc.collect()
+    
     # guardar el DataFrame procesado como parquet
+    print(f"💾 Guardando datos procesados...")
     os.makedirs(os.path.join(base_path, "data_processed"), exist_ok=True)
     df_processed.to_parquet(os.path.join(base_path, "data_processed/df_processed.parquet"), index=False)
+    print(f"✅ Procesamiento completado exitosamente!")
+    
+    # Final cleanup
+    del df_processed
+    gc.collect()
 
 # ----------------------------------------------------------------------------
 
