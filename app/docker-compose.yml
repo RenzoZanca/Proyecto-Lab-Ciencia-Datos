@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: sodai-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - sodai-shared-data:/shared-data
+    networks:
+      - sodai-network
+  frontend:
+    build:
+      context: ./frontend
+    container_name: sodai-frontend
+    ports:
+      - "7860:7860"
+    networks:
+      - sodai-network
+    depends_on:
+      - backend
+
+networks:
+  sodai-network:
+    external: true
+
+volumes:
+  sodai-shared-data:
+    external: true

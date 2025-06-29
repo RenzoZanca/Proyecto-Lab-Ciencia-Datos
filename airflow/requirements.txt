@@ -1,0 +1,26 @@
+# Apache Airflow
+apache-airflow==3.0.1
+
+# Data Processing
+pandas==2.2.3
+numpy==2.2.6
+pyarrow==19.0.1
+
+# Machine Learning
+scikit-learn==1.6.1
+xgboost==3.0.2
+optuna==4.3.0
+optuna-integration==3.6.0
+scipy==1.15.3
+joblib==1.5.1
+
+# System Monitoring
+psutil==6.1.1
+
+# Dependencies base
+python-dateutil==2.9.0.post0
+setuptools>=40.0.0 
+
+# Extras necesarios para Airflow 3.0.1
+sqlalchemy==1.4.54
+pydantic==2.11.5 

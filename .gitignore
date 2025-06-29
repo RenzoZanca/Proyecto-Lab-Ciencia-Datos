@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+ENV/
+venv/
+
+# Airflow
+airflow/data/
+airflow/logs/
+airflow/__pycache__/
+airflow/run_airflow_demo.sh
+runs/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Demo scripts
+demo_airflow.sh
+run_pipeline.py
+
+# Model artifacts (opcional - depende si quieres versionarlos)
+# *.pkl
+# *.bin
+
+# gradio
+app/frontend/.gradio/
