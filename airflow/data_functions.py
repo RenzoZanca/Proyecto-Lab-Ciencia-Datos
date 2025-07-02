@@ -27,39 +27,48 @@ import joblib
 import gc  # Add garbage collection for memory management
 
 SHARED_DATA_DIR = "/shared-data"
+HISTORICAL_DIR = os.path.join(SHARED_DATA_DIR, "transacciones_historicas")
 
-# Obtiene los datos de la fuente
 def get_data(**kwargs):
     """
-    Obtiene los datos de la fuente según la fecha de ejecución.
-    En producción, estos datos aparecen  en el directorio de trabajo.
+    Obtiene los datos de la fuente según la fecha de ejecución y actualiza
+    las transacciones históricas con los nuevos registros sin duplicar.
     """
     execution_date = kwargs['ds']
     base_path = os.path.join(SHARED_DATA_DIR, execution_date)
-
-    
-   
-    os.makedirs(os.path.join(base_path, "data"), exist_ok=True)
-    
-    # Paths de los archivos de datos
-    
     data_dir = os.path.join(base_path, 'data')
     
+    os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(HISTORICAL_DIR, exist_ok=True)
+
     try:
-        transacciones = pd.read_parquet(os.path.join(data_dir, 'transacciones.parquet'))
+        nuevas_transacciones = pd.read_parquet(os.path.join(data_dir, 'transacciones.parquet'))
         clientes = pd.read_parquet(os.path.join(data_dir, 'clientes.parquet'))
         productos = pd.read_parquet(os.path.join(data_dir, 'productos.parquet'))
-        
-        print(f"Datos cargados exitosamente para fecha: {execution_date}")
-        print(f"   - Transacciones: {len(transacciones)} registros")
+
+        print(f"Datos nuevos cargados para fecha: {execution_date}")
+        print(f"   - Nuevas Transacciones: {len(nuevas_transacciones)} registros")
         print(f"   - Clientes: {len(clientes)} registros")
         print(f"   - Productos: {len(productos)} registros")
-        
+
+        # Cargar y actualizar transacciones históricas
+        historico_path = os.path.join(HISTORICAL_DIR, "transacciones.parquet")
+        if os.path.exists(historico_path):
+            historicas = pd.read_parquet(historico_path)
+            transacciones = pd.concat([historicas, nuevas_transacciones], ignore_index=True)
+            transacciones = transacciones.drop_duplicates()
+            print(f"   - Histórico actualizado: {len(transacciones)} registros totales")
+        else:
+            transacciones = nuevas_transacciones
+            print(f"   - Creando histórico con {len(transacciones)} registros")
+
+        transacciones.to_parquet(historico_path, index=False)
+
     except FileNotFoundError as e:
         print(f"Archivo no encontrado: {e}")
         print(f"Para esta demo, copie los archivos base a: {data_dir}/")
         raise
-    
+
     return {
         'transacciones': transacciones,
         'clientes': clientes,
