@@ -10,6 +10,8 @@ services:
       - sodai-network
     volumes:
       - sodai-shared-data:/shared-data
+    environment:
+      - AIRFLOW__API__AUTH_BACKEND=airflow.api.auth.backend.default
     # Add memory configuration to prevent OOM kills
     deploy:
       resources:

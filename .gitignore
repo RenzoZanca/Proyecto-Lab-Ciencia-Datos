@@ -44,3 +44,5 @@ run_pipeline.py
 
 # gradio
 app/frontend/.gradio/
+
+convert-csv.ipynb
