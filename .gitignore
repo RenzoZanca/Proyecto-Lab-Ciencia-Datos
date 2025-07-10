@@ -44,3 +44,9 @@ run_pipeline.py
 
 # gradio
 app/frontend/.gradio/
+
+convert-csv.ipynb
+analyze_feature_importance.py
+informe_checkpoint.ipynb
+feature_importance_evolution.png
+metrics_evolution.png
